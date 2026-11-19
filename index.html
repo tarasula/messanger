@@ -938,7 +938,7 @@ function openChat(cid){
   closePopups();
   T.openChat=cid;T.reply=null;T.newBelow=0;c.unread=0;T.animated=new Set(c.messages.map(m=>m.id));
   if(c.type==='private'&&S.users[c.user].online)markRead(c);
-  if(c.remote)markRemoteRead(c);
+  if(c.remote){if(!RT.msgUnsubs[c.rid])watchMessages(c);markRemoteRead(c)}
   save();
   renderChatHead();renderChatBottom();$('#msgs').innerHTML='';renderMessages(true);updateJump();
   $('#panel').classList.remove('open');
@@ -2256,6 +2256,7 @@ function watchUser(id){
     save();renderListIfVisible();if(T.openChat)updateHeadStatus();
   },()=>{});
 }
+setInterval(()=>{if(RT.uid&&RT.ready)Object.values(S.chats).forEach(c=>{if(c.remote&&!RT.msgUnsubs[c.rid])watchMessages(c)})},15000);
 setInterval(()=>{let ch=false;Object.values(S.users).forEach(u=>{if(!u.remote)return;const on=!!(u.lastSeen&&Date.now()-u.lastSeen<95000);if(on!==u.online){u.online=on;ch=true}});if(ch){renderListIfVisible();if(T.openChat)updateHeadStatus()}},20000);
 
 /* ---------- chats ---------- */
@@ -2298,7 +2299,7 @@ function watchMessages(c,attempt){
   },e=>{ // the chat may not be on the server yet (just created): reconnect a few times instead of going silent
     delete RT.msgUnsubs[c.rid];
     if(attempt<8&&S.chats[c.id]&&RT.uid){setTimeout(()=>{if(!RT.msgUnsubs[c.rid]&&S.chats[c.id]&&RT.uid)watchMessages(S.chats[c.id],attempt+1)},700*(attempt+1));return}
-    if(!(e&&e.code==='permission-denied'))toast(fbErr(e));
+    toast('Не удалось загрузить сообщения: '+((e&&e.code)||'ошибка')+'. Обновите страницу.');
   });
 }
 function markRemoteRead(c){
