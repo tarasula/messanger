@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // Profiles: everyone signed in can read; only the owner writes their own.
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && uid() == userId
+        && (!('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 60));
+      allow delete: if signedIn() && uid() == userId;
+    }
+
+    // @usernames are unique: a name can be claimed once, only by yourself.
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == uid() && name.matches('^[a-z0-9_]{5,32}$');
+      allow delete: if signedIn() && resource.data.uid == uid();
+    }
+
+    // Chats: only members see them.
+    match /chats/{chatId} {
+      allow read: if signedIn() && uid() in resource.data.members;
+      allow create: if signedIn() && uid() in request.resource.data.members
+        && ((request.resource.data.type == 'group' && uid() in request.resource.data.admins)
+          || (request.resource.data.type == 'private' && request.resource.data.members.size() == 2
+              && (chatId == request.resource.data.members[0] + '_' + request.resource.data.members[1]
+                  || chatId == request.resource.data.members[1] + '_' + request.resource.data.members[0])));
+      allow update: if signedIn() && uid() in resource.data.members && (
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reads', 'typing', 'lastMsg', 'updatedAt'])
+        || (resource.data.type == 'group' && uid() in resource.data.admins)
+        || (resource.data.type == 'group'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+            && request.resource.data.members.toSet() == resource.data.members.toSet().difference([uid()].toSet())));
+      allow delete: if signedIn() && resource.data.type == 'group' && uid() in resource.data.admins;
+
+      match /messages/{msgId} {
+        function chat() { return get(/databases/$(database)/documents/chats/$(chatId)).data; }
+        function isMember() { return signedIn() && uid() in chat().members; }
+        function blockedBy(other) { return uid() in get(/databases/$(database)/documents/users/$(other)).data.get('blocked', []); }
+        function notBlocked() { return chat().type != 'private' || (!blockedBy(chat().members[0]) && !blockedBy(chat().members[1])); }
+
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.from == uid() && notBlocked()
+          && (!request.resource.data.get('sys', false) || chat().type == 'group');
+        // Others may only react and vote; poll question and options stay as written.
+        allow update: if isMember()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'poll'])
+          && (!('poll' in resource.data) || (request.resource.data.poll.q == resource.data.poll.q && request.resource.data.poll.opts == resource.data.poll.opts));
+        allow delete: if isMember() && (resource.data.from == uid() || chat().type == 'private' || uid() in chat().get('admins', []));
+      }
+    }
+
+    // Reports: anyone signed in can file one; nobody can read them from the app.
+    match /reports/{reportId} {
+      allow create: if signedIn() && request.resource.data.by == uid();
+    }
+  }
+}
