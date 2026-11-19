@@ -2239,7 +2239,7 @@ function onProfile(d){
   const q=F.query(F.collection(F.db,'chats'),F.where('members','array-contains',RT.uid));
   RT.chatUnsub=F.onSnapshot(q,snap=>{
     const seen=new Set();
-    snap.docs.forEach(d=>{seen.add(d.id);applyChatDoc(d.id,d.data())});
+    snap.docs.forEach(d=>{seen.add(d.id);if(d.metadata&&d.metadata.hasPendingWrites&&!S.chats['r_'+d.id])return;applyChatDoc(d.id,d.data())});
     Object.values(S.chats).forEach(c=>{if(c.remote&&!seen.has(c.rid)){RT.msgUnsubs[c.rid]&&RT.msgUnsubs[c.rid]();delete RT.msgUnsubs[c.rid];if(T.openChat===c.id)closeChat();delete S.chats[c.id]}});
     save();renderListIfVisible();if(T.openChat&&S.chats[T.openChat]?.remote){renderChatHead()}
   },e=>toast(fbErr(e)));
@@ -2285,8 +2285,8 @@ function recomputeStatus(c){
   const mine=(c.reads||{})[RT.uid]||0;
   c.unread=T.openChat===c.id?0:c.messages.filter(m=>m.from!=='me'&&!m.sys&&m.time>mine).length;
 }
-function watchMessages(c){
-  const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(150));
+function watchMessages(c,attempt){
+  attempt=attempt||0;const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(150));
   RT.msgUnsubs[c.rid]=F.onSnapshot(q,snap=>{
     const hidden=new Set((S.hidden&&S.hidden[c.id])||[]);
     const list=snap.docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
@@ -2295,7 +2295,11 @@ function watchMessages(c){
     recomputeStatus(c);save();
     if(T.openChat===c.id){renderMessages();markRemoteRead(c)}
     renderListIfVisible();
-  },e=>{if(e&&e.code==='permission-denied')return;toast(fbErr(e))});
+  },e=>{ // the chat may not be on the server yet (just created): reconnect a few times instead of going silent
+    delete RT.msgUnsubs[c.rid];
+    if(attempt<8&&S.chats[c.id]&&RT.uid){setTimeout(()=>{if(!RT.msgUnsubs[c.rid]&&S.chats[c.id]&&RT.uid)watchMessages(S.chats[c.id],attempt+1)},700*(attempt+1));return}
+    if(!(e&&e.code==='permission-denied'))toast(fbErr(e));
+  });
 }
 function markRemoteRead(c){
   const F=FBX();const last=c.messages.filter(m=>m.from!=='me'&&!m.sys).pop();if(!last)return;
