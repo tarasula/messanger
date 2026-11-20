@@ -2709,9 +2709,9 @@ async function getMedia(video){
 function newPeer(){
   const pc=new RTCPeerConnection({iceServers:ICE_SERVERS});
   pc.ontrack=e=>{const st=e.streams[0];if(!st||!CALL)return;CALL.remote=st;attachRemote(st)};
-  pc.oniceconnectionstatechange=()=>{if(!CALL||CALL.pc!==pc)return;const s=pc.iceConnectionState;
-    if(s==='failed'){toast('Не удалось соединиться: сеть не пропускает звонок. Попробуйте через Wi-Fi');endCall(CALL.st==='active'?'ok':'cancelled')}
-    if(s==='disconnected'&&CALL.st==='active'){setCallStatus('Связь прерывается…');clearTimeout(CALL._dc);CALL._dc=setTimeout(()=>{if(CALL&&CALL.pc===pc&&pc.iceConnectionState!=='connected'&&pc.iceConnectionState!=='completed')endCall('ok')},9000)}};
+  pc.oniceconnectionstatechange=()=>{if(!CALL||CALL.pc!==pc)return;const s=pc.iceConnectionState;if((s==='connected'||s==='completed')&&CALL._lost){CALL._lost=0;clearTimeout(CALL._lostT);clearTimeout(CALL._dc2);clearTimeout(CALL._dc);toast('Связь восстановлена');try{const au=$('#clAudio');au&&au.play().catch(()=>{})}catch(_){}}
+    if(s==='failed'){if(CALL.st==='active'&&(document.hidden||Date.now()-(RTCX.shownAt||0)<15000)){callLost(CALL);return}toast('Не удалось соединиться: сеть не пропускает звонок. Попробуйте через Wi-Fi');endCall(CALL.st==='active'?'ok':'cancelled')}
+    if(s==='disconnected'&&CALL.st==='active'){setCallStatus('Связь прерывается…');clearTimeout(CALL._dc);CALL._dc=setTimeout(()=>{if(CALL&&CALL.pc===pc&&pc.iceConnectionState!=='connected'&&pc.iceConnectionState!=='completed'){if(document.hidden){callLost(CALL);return}restartIce(CALL);CALL._dc2=setTimeout(()=>{if(CALL&&CALL.pc===pc&&!['connected','completed'].includes(pc.iceConnectionState))endCall('ok')},20000)}},9000)}};
   return pc;
 }
 function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));
@@ -2728,6 +2728,7 @@ async function startRealCall(c,video,fromEl){aSess('auto');
   if(c.type!=='private'){toast('Групповые звонки скоро появятся — пока можно звонить один на один');return}
   if(S.users[c.user]?.blocked){toast('Пользователь заблокирован — звонки недоступны');return}
   if(!window.RTCPeerConnection||!navigator.mediaDevices){toast('Этот браузер не умеет звонить. Откройте мессенджер в Safari или Chrome');return}
+  if(CALL&&CALL.st==='ended')forceClearCall();
   actx();const id=uid()+uid();
   CALL={cid:c.id,video,group:false,dir:'out',st:'calling',t0:0,muted:false,speaker:false,min:false,key:callKeyFrom(id),timers:[],raf:0,joined:[],real:true,callId:id};
   buildCallUI(fromEl);primeRemote();setCallStatus('Соединение…');
@@ -2743,6 +2744,7 @@ async function startRealCall(c,video,fromEl){aSess('auto');
   }catch(e){toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к микрофону, чтобы звонить':'Не удалось начать звонок');endCall('cancelled')}
 }
 function incomingRealCall(c,sig,from){
+  if(CALL&&(CALL.st==='ended'||CALL.callId===sig.id)){if(CALL.callId===sig.id)return;forceClearCall()}
   if(CALL){sigSend(c,{t:'end',id:sig.id,r:'busy'});return}
   actx();
   CALL={cid:c.id,video:!!sig.video,group:false,dir:'in',st:'incoming',t0:0,muted:false,speaker:false,min:false,key:callKeyFrom(sig.id),timers:[],raf:0,joined:[],real:true,callId:sig.id,offer:sig.sdp};
@@ -2768,7 +2770,10 @@ function handleSig(c,doc,x){
   const s=x.sig||{};if(Date.now()-(x.time||0)>55000&&s.t==='offer')return;
   if(s.t==='offer')incomingRealCall(c,{...s,_t:x.time},x.from);
   else if(s.t==='answer'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.pc&&CALL.st==='ringing'){const K=CALL;stopTones();CALL.st='connecting';CALL.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).then(()=>goLive(K)).catch(()=>{toast('Не удалось соединиться');endCall('cancelled')})}}
-  else if(s.t==='end'){if(CALL&&CALL.real&&CALL.callId===s.id){CALL.remoteEnded=true;endCall(s.r==='busy'?'declined':s.r==='declined'?'declined':CALL.st==='active'?'ok':CALL.dir==='in'?'missed':'cancelled')}}
+  else if(s.t==='reoffer'){const K=CALL;if(K&&K.real&&K.callId===s.id&&K.pc)(async()=>{try{await K.pc.setRemoteDescription({type:'offer',sdp:s.sdp});await K.pc.setLocalDescription(await K.pc.createAnswer());await waitIce(K.pc);if(CALL===K)sigSend(c,{t:'reanswer',id:K.callId,sdp:K.pc.localDescription.sdp})}catch(_){}})()}
+  else if(s.t==='reanswer'){const K=CALL;if(K&&K.real&&K.callId===s.id&&K.pc)K.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).catch(()=>{})}
+  else if(s.t==='rs'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.dir==='out')restartIce(CALL)}
+  else if(s.t==='end'){if(CALL&&CALL.real&&CALL.callId===s.id){CALL.remoteEnded=true;endCall(s.r==='busy'?'busy':s.r==='declined'?'declined':CALL.st==='active'?'ok':CALL.dir==='in'?'missed':'cancelled')}}
 }
 function realCallCleanup(K,res,dur){setTimeout(()=>aSess('playback'),300);
   try{if(K.pc)K.pc.close()}catch(_){}
@@ -2778,6 +2783,15 @@ function realCallCleanup(K,res,dur){setTimeout(()=>aSess('playback'),300);
   try{if(!K.t0)pushCallEnded(c,K,res)}catch(_){}
   if(K.dir==='out')remoteWrite(c,{from:RT.uid,time:Date.now(),text:'',call:{video:!!K.video,dur:Math.round(dur),res}});
 }
+function callLost(K){if(K._lost)return;K._lost=Date.now();setCallStatus('Связь прервалась — вернитесь в мессенджер…');clearTimeout(K._lostT);K._lostT=setTimeout(()=>{if(CALL===K&&K.pc&&!['connected','completed'].includes(K.pc.iceConnectionState))endCall('ok')},90000);K.timers.push(K._lostT)}
+async function restartIce(K){if(!K||!K.pc||CALL!==K||K.st==='ended')return;if(K._rsAt&&Date.now()-K._rsAt<4000)return;K._rsAt=Date.now();const c=S.chats[K.cid];if(!c)return;
+  try{const tr=K.local&&K.local.getAudioTracks()[0];if(!tr||tr.readyState==='ended'){const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});const nt=st.getAudioTracks()[0];const snd=K.pc.getSenders().find(x=>x.track&&x.track.kind==='audio'||(!x.track&&x.dtmf));if(snd)await snd.replaceTrack(nt);if(K.local){K.local.getAudioTracks().forEach(t=>K.local.removeTrack(t));K.local.addTrack(nt)}nt.enabled=!K.muted}}catch(_){}
+  try{const a=$('#clAudio');a&&a.play&&a.play().catch(()=>{})}catch(_){}
+  if(K.dir==='out'){try{await K.pc.setLocalDescription(await K.pc.createOffer({iceRestart:true}));await waitIce(K.pc);if(CALL===K)sigSend(c,{t:'reoffer',id:K.callId,sdp:K.pc.localDescription.sdp})}catch(_){}}
+  else sigSend(c,{t:'rs',id:K.callId})}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;RTCX.shownAt=Date.now();const K=CALL;if(!K||!K.real||K.st==='ended'){if(K&&K.st==='ended')setTimeout(()=>{if(CALL===K)forceClearCall()},1500);return}
+  if(K.pc&&!['connected','completed'].includes(K.pc.iceConnectionState)&&K.st==='active'){setCallStatus('Восстанавливаем связь…');restartIce(K)}
+  else{try{const a=$('#clAudio');a&&a.play&&a.play().catch(()=>{})}catch(_){}const tr=K.local&&K.local.getAudioTracks()[0];if(tr&&tr.readyState==='ended')restartIce(K)}});
 function realMute(){if(CALL&&CALL.local)CALL.local.getAudioTracks().forEach(t=>t.enabled=!CALL.muted)}
 function realCam(){if(!CALL||!CALL.local)return;const vt=CALL.local.getVideoTracks();if(!vt.length){toast('Чтобы говорить с видео, начните видеозвонок');return}
   CALL.camOff=!CALL.camOff;vt.forEach(t=>t.enabled=!CALL.camOff);$('#callUI').classList.toggle('vid',!CALL.camOff);paintCtrls()}
@@ -4325,7 +4339,9 @@ function watchMessages(c,attempt){
   attempt=attempt||0;const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(400));let first=true;
   RT.msgUnsubs[c.rid]=F.onSnapshot(q,snap=>{
     const hidden=new Set((S.hidden&&S.hidden[c.id])||[]);
-    const docs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<55000)handleSig(c,d,x);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
+    const docs=[];const sigs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){sigs.push([d,x]);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
+    {sigs.sort((a,b)=>(a[1].time||0)-(b[1].time||0));const ended=new Set(sigs.filter(([d,x])=>x.sig.t==='end').map(([d,x])=>x.sig.id));
+     sigs.forEach(([d,x])=>{if(x.sig.t==='offer'&&ended.has(x.sig.id)){RTCX.seen.add(d.id);return}if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<55000)handleSig(c,d,x);else RTCX.seen.add(d.id)})}
     const known=new Set(c.messages.map(m=>m.id));
     const list=docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
     if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();localNotify(c,nm);inAppBanner(c,nm)}catch(_){}}first=false;
@@ -4838,6 +4854,7 @@ function restoreCall(){
   ui.animate([{transform:'translateY(-46%) scale(.2,.06)',borderRadius:'40px',opacity:0},{transform:'none',borderRadius:'0px',opacity:1}],{duration:480,easing:'cubic-bezier(.32,.72,0,1)'});
   const bar=$('#callbar');if(bar){bar.animate([{transform:'none'},{transform:'translateY(-100%)'}],{duration:260}).onfinish=()=>bar.remove()}
 }
+function forceClearCall(){const K=CALL;if(!K)return;try{cancelAnimationFrame(K.raf)}catch(_){}$('#callbar')?.remove();$('#callUI')?.remove();CALL=null;try{renderTabbar()}catch(_){}}
 function endCall(res){
   if(!CALL||CALL.st==='ended')return;
   const K=CALL;const dur=K.st==='active'?(now()-K.t0)/1000:0;
@@ -4845,7 +4862,7 @@ function endCall(res){
   if(K.stream)K.stream.getTracks().forEach(t=>t.stop());
   if(K.real)realCallCleanup(K,res==='ok'?'ok':res,dur);
   [0,.32,.64].forEach(d=>tone([480,620],.18,.05,d));
-  const labels={ok:'Звонок завершён',cancelled:'Звонок отменён',missed:K.dir==='out'?'Нет ответа':'Пропущенный звонок',declined:K.dir==='out'?'Абонент занят':'Звонок отклонён'};
+  const labels={ok:'Звонок завершён',cancelled:'Звонок отменён',missed:K.dir==='out'?'Нет ответа':'Пропущенный звонок',declined:K.dir==='out'?'Вызов отклонён':'Звонок отклонён',busy:'Абонент занят'};
   setCallStatus(labels[res]+(dur?' · '+fmtDur(dur):''));
   const ui=$('#callUI');
   if(ui){ui.classList.add('ending');const ctr=$('#clCtrls');ctr&&ctr.animate([{opacity:1},{opacity:0,transform:'translateY(30px)'}],{duration:300,fill:'forwards'})}
