@@ -589,6 +589,7 @@ input[type=datetime-local]{color-scheme:dark}
 .pc-show{font-size:34px;letter-spacing:8px;margin:22px 0 6px;font-weight:700}
 .pc-peek{border:0;background:none;color:var(--ac);font:inherit;font-size:15px;margin-bottom:26px;cursor:pointer}
 .pc-go{width:80%;max-width:300px}
+.vchk{display:inline-block;vertical-align:-2px;margin-left:4px;flex-shrink:0}h2 .vchk{width:22px;height:22px;vertical-align:-3px}
 </style>
 </head>
 <body>
@@ -774,7 +775,7 @@ function chatItemHTML(c,i){
   const badge=c.unread?`<span class="badge ${c.muted?'mute':''}">${c.unread}</span>`:(c.pinned?`<span class="pinic">📌</span>`:'');
   const icon=c.type==='channel'?'📢 ':c.type==='group'?'👥 ':'';
   return `<div class="item ${c.locked?'locked':''}" data-c="${c.id}" style="animation-delay:${Math.min(i,10)*25}ms"><div class="av-wrap">${avHTML(o,58)}${online?'<span class="dot"></span>':''}${c.locked?'<span class="lockb">🔒</span>':''}</div>
-  <div class="body"><div class="l1"><span class="nm">${icon?`<span style="font-size:13px">${icon}</span>`:''}${esc(chatTitle(c))}${c.fav?' <span style="font-size:12px">⭐</span>':''}${u&&u.blocked?' <span class="blk">🚫</span>':''}${c.muted?IC.mute:''}</span><span class="tm">${ticks} ${lm?listTime(lm.time):''}</span></div>
+  <div class="body"><div class="l1"><span class="nm">${icon?`<span style="font-size:13px">${icon}</span>`:''}${esc(chatTitle(c))}${vbadge(c)}${c.fav?' <span style="font-size:12px">⭐</span>':''}${u&&u.blocked?' <span class="blk">🚫</span>':''}${c.muted?IC.mute:''}</span><span class="tm">${ticks} ${lm?listTime(lm.time):''}</span></div>
   <div class="l2"><span class="pv">${pv}</span>${badge}</div></div></div>`;
 }
 function renderChatList(quiet){
@@ -790,7 +791,7 @@ function renderChatList(quiet){
     if(mine.length)html+='<div class="sec-h">Чаты и контакты</div>'+mine.map(chatItemHTML).join('');
     if(gUsers.length||gCh.length){html+='<div class="sec-h">Глобальный поиск</div>';
       html+=gUsers.map(([id,u],i)=>`<div class="item" data-u="${id}" style="animation-delay:${i*25}ms"><div class="av-wrap">${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},46)}${u.online?'<span class="dot"></span>':''}</div><div class="body"><div class="nm">${esc(u.name)}</div><div class="pv">${u.username?'@'+esc(u.username)+', ':''}${statusText(u)}</div></div></div>`).join('');
-      html+=gCh.map((c,i)=>`<div class="item" data-c="${c.id}" style="animation-delay:${i*25}ms">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="nm">📢 ${esc(c.title)}</div><div class="pv">${NOBOTS?'канал · откройте, чтобы подписаться':fmtK(c.subs)+' подписчиков'}</div></div></div>`).join('')}
+      html+=gCh.map((c,i)=>`<div class="item" data-c="${c.id}" style="animation-delay:${i*25}ms">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="nm">📢 ${esc(c.title)}${vbadge(c)}</div><div class="pv">${NOBOTS?'канал · откройте, чтобы подписаться':fmtK(c.subs)+' подписчиков'}</div></div></div>`).join('')}
     if(msgHits.length)html+='<div class="sec-h">Сообщения</div>'+msgHits.slice(0,20).map(([c,m])=>`<div class="item" data-c="${c.id}">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="l1"><span class="nm">${esc(chatTitle(c))}</span><span class="tm">${listTime(m.time)}</span></div><div class="pv">${esc(m.text)}</div></div></div>`).join('');
     if(REAL&&RT.uid&&q.replace('@','').length>=3){if(RT.searchQ!==q){RT.searchQ=q;RT.searchHit=null;clearTimeout(RT.st);RT.st=setTimeout(async()=>{const u=await findByUsername(q);if(RT.searchQ===q&&u){RT.searchHit=u;renderChatList()}},450)}
       if(RT.searchHit){const u=RT.searchHit;html='<div class="sec-h">Найден по @нику</div><div class="item" data-ru="'+u.id+'">'+avHTML({name:u.name,color:colorFor(u.id),img:u.avatar},46)+'<div class="body"><div class="nm">'+esc(u.name)+'</div><div class="pv">@'+esc(u.username)+' · написать</div></div></div>'+html}}
@@ -1003,14 +1004,14 @@ function headStatus(c){
   if(c.type==='private'){const u=S.users[c.user];if(u.blocked)return {t:'заблокирован(а)'};return {t:statusText(u),blue:u.online}}
   if(c.type==='group'){const on=c.members.filter(m=>S.users[m]?.online).length;return {t:`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}${on?`, ${on} в сети`:''}`}}
   if(NOBOTS&&(c.feed||c.news))return {t:c.subscribed?'вы подписаны':'канал'};
-  return {t:`${fmtK(c.subs)} ${plural(c.subs,'подписчик','подписчика','подписчиков')}`};
+  return {t:`${fmtK(c.subs)} ${plural(c.subs>=1000?5:c.subs,'подписчик','подписчика','подписчиков')}`};
 }
 function renderChatHead(){
   const c=S.chats[T.openChat];if(!c)return;
   const st=headStatus(c);
   const other=Object.values(S.chats).filter(x=>x.id!==c.id&&!x.locked&&!x.muted&&visibleInList(x)).reduce((a,x)=>a+(x.unread||0),0);
   const canCall=(c.type==='private'||c.type==='group')&&!c.discussion&&!c.remote;
-  $('#chatHead').innerHTML=`<button class="back" id="backBtn">${IC.back}${other?`<span class="bk-b">${other}</span>`:''}</button><div class="ttl" id="ttl"><div class="n">${c.locked?'🔒 ':''}${esc(chatTitle(c))}${c.muted?' 🔕':''}</div><div class="s ${st.blue?'blue':''}">${st.t}</div></div>${canCall?`<button class="hb" id="callBtn" aria-label="Позвонить">${IC.phone}</button>`:''}<button class="hb" id="dotsBtn" aria-label="Ещё">${IC.dots}</button><div id="hav" style="cursor:pointer">${avHTML(chatAvatarObj(c),36)}</div>`;
+  $('#chatHead').innerHTML=`<button class="back" id="backBtn">${IC.back}${other?`<span class="bk-b">${other}</span>`:''}</button><div class="ttl" id="ttl"><div class="n">${c.locked?'🔒 ':''}${esc(chatTitle(c))}${vbadge(c)}${c.muted?' 🔕':''}</div><div class="s ${st.blue?'blue':''}">${st.t}</div></div>${canCall?`<button class="hb" id="callBtn" aria-label="Позвонить">${IC.phone}</button>`:''}<button class="hb" id="dotsBtn" aria-label="Ещё">${IC.dots}</button><div id="hav" style="cursor:pointer">${avHTML(chatAvatarObj(c),36)}</div>`;
   $('#backBtn').onclick=closeChat;
   $('#ttl').onclick=openProfile;$('#hav').onclick=c.feed?()=>openDiscussion(c.feed):openProfile;
   $('#callBtn')?.addEventListener('click',e=>startCall(c.id,false,false,e.currentTarget));
@@ -1069,9 +1070,9 @@ function openUserProfile(id){
 function openGroupProfile(c){
   const admin=c.type==='group'?!!c.admin:!!c.owner;
   const has=c.messages.some(m=>!m.sys);
-  const sub=c.type==='group'?`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}`:NOBOTS&&(c.feed||c.news)?(c.subscribed?'вы подписаны':'канал'):`${fmtK(c.subs)} ${plural(c.subs,'подписчик','подписчика','подписчиков')}`;
+  const sub=c.type==='group'?`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}`:NOBOTS&&(c.feed||c.news)?(c.subscribed?'вы подписаны':'канал'):`${fmtK(c.subs)} ${plural(c.subs>=1000?5:c.subs,'подписчик','подписчика','подписчиков')}`;
   const memberRow=m=>{const u=S.users[m];return `<div class="r mrow" data-u="${m}">${admin?`<button class="rmbtn" data-rm="${m}" aria-label="Удалить">−</button>`:''}${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},36)}<div class="mi-t"><div>${esc(u.name)}</div><div class="sm" style="${u.online?'color:var(--ac)':''}">${statusText(u)}</div></div>${admin?`<button class="rmconf" data-rmc="${m}">Удалить</button>`:''}</div>`};
-  const body=`<div class="pf-top">${avHTML(chatAvatarObj(c),96)}<h2>${esc(c.title)}</h2><div class="pf-st" id="gSub">${sub}</div>${c.desc?`<p class="pf-desc">${esc(c.desc)}</p>`:''}</div>
+  const body=`<div class="pf-top">${avHTML(chatAvatarObj(c),96)}<h2>${esc(c.title)}${vbadge(c)}</h2><div class="pf-st" id="gSub">${sub}</div>${REAL&&c.type==='channel'&&(c.feed||c.owner)?'<div class="sm" style="margin-top:4px">🤖 подписчики, просмотры и реакции — от ботов-фанатов</div>':''}${c.desc?`<p class="pf-desc">${esc(c.desc)}</p>`:''}</div>
    <div class="qa">${c.type==='group'?`<button data-a="call"><span>📞</span>Звонок</button>`:''}<button data-a="mute"><span>${c.muted?'🔔':'🔕'}</span>${c.muted?'Вкл. звук':'Без звука'}</button>${c.type==='channel'&&!c.owner&&c.subscribed?`<button data-a="leave"><span>🚪</span>Отписаться</button>`:''}</div>
    ${extraRows(c)}
    <div class="grp">
@@ -1116,7 +1117,7 @@ function renderChatBottom(){
     b.innerHTML=`<div class="mutebar"><button id="unblk" style="color:#ff3b30">Разблокировать</button></div>`;$('#unblk').onclick=()=>toggleBlock(c.user);$('#panel').classList.remove('open');return}
   if(c.type==='channel'&&!c.owner){
     if(!c.subscribed){b.innerHTML=`<div class="mutebar"><button id="subBtn" style="font-weight:600">Подписаться</button></div>`;$('#subBtn').onclick=()=>subscribe(c);}
-    else{b.innerHTML=`<div class="mutebar${c.feed&&!NOBOTS?' two':''}">${c.feed&&!NOBOTS?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
+    else{b.innerHTML=`<div class="mutebar${c.feed&&!NOCHAT?' two':''}">${c.feed&&!NOCHAT?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
     $('#panel').classList.remove('open');return;
   }
   b.innerHTML=`<div class="replybar" id="replyBar"></div><div class="inbar"><button class="ib" id="attBtn" aria-label="Фото">${IC.clip}</button>${(c.type==='channel'&&c.owner)||c.type==='group'?'<button class="ib" id="pollBtn" aria-label="Опрос">📊</button>':''}<div class="field"><textarea id="txt" rows="1" placeholder="${c.type==='channel'?'Опубликовать пост':'Сообщение'}"></textarea><button class="ib ${T.spoilerSend?'on':''}" id="spBtn" title="Скрытый текст">${IC.spoil}</button><button class="ib" id="emBtn">${IC.smile}</button></div><button class="send dim hide" id="sendBtn" aria-label="Отправить">${IC.send}</button><button class="send mic" id="micBtn" aria-label="Удерживайте, чтобы записать голосовое">${VI.mic}</button></div>`;
@@ -1621,6 +1622,8 @@ setInterval(()=>{
 setInterval(()=>{if(T.openChat)updateHeadStatus();if(T.tab==='contacts'&&!document.querySelector('#q:focus'))renderContacts()},30000);
 
 const PULL_SVG=`<svg viewBox="-24 -24 48 48" width="46" height="46">${Array.from({length:16},(_,i)=>`<line class="st" x1="0" y1="-11" x2="0" y2="-19" transform="rotate(${i*22.5})"/>`).join('')}</svg><span class="pic">🗂</span>`;
+const VERIFY_SVG='<svg class="vchk" viewBox="0 0 24 24" width="16" height="16"><path fill="#34c759" d="M12 1.5l2.6 1.9 3.2-.2 1 3.1 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3.1-3.2-.2L12 22.5l-2.6-1.9-3.2.2-1-3.1L2.6 15.8l1-3.1-1-3.1 2.6-1.9 1-3.1 3.2.2z"/><path d="M7.5 12.3l3 3 6-6.2" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function vbadge(c){return c&&c.type==='channel'&&(c.subs||0)>=10000?VERIFY_SVG:''}
 function suggestChannels(){if(T.folder!=='all'&&T.folder!=='channel')return '';const cs=Object.values(S.chats).filter(c=>(c.feed||c.news)&&!c.subscribed);if(!cs.length)return '';return `<div class="sec-h">Каналы</div>`+cs.map((c,i)=>`<div class="item" data-c="${c.id}" style="animation-delay:${i*25}ms">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="nm">📢 ${esc(c.title)}</div><div class="pv">${esc((c.desc||'').slice(0,60))}</div></div></div>`).join('')}
 function sortChats(a,b){return (!!b.pinned-!!a.pinned)||(!!b.fav-!!a.fav)||((lastMsg(b)?.time||0)-(lastMsg(a)?.time||0))}
 function bindListItems(ct){
@@ -2033,7 +2036,9 @@ function dayTimes(k,t){ // 4–7 posts per day, each at its own time between 08:
   return out.sort((a,b)=>a-b);
 }
 /* ===== extras: media store, video, music, themes, ringtones, disappearing messages, favourites, chat info ===== */
-const NOBOTS=REAL; // the public site: no bots, no fake numbers, no pre-made contacts
+const NOBOTS=false; // fan bots react, view and subscribe everywhere
+const NOCHAT=REAL; // the public site: no bot chats under channels
+const EMPTYSTART=REAL; // the public site starts with an empty chat list
 const IDB={_d:null,
   open(){return this._d||(this._d=new Promise((res,rej)=>{try{const r=indexedDB.open('msgr_media',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}))},
   async get(k){try{const d=await this.open();return await new Promise(res=>{const q=d.transaction('m').objectStore('m').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(_){return null}},
@@ -2265,8 +2270,9 @@ function ensureFeeds(){
   let ch=false;
   if(S.chats.c1&&!S.chats.c1.owner){delete S.chats.c1;ch=true}
   if(S.feedVer!==3){Object.keys(S.chats).filter(id=>id.startsWith('f_')).forEach(id=>delete S.chats[id]);S.feedVer=3;ch=true}
-  Object.entries(FEEDS).forEach(([k,F])=>{const id='f_'+k;if(!S.chats[id]){S.chats[id]={id,type:'channel',feed:k,title:F.title,emoji:F.emoji,color:F.color,desc:F.desc,subs:NOBOTS?0:F.subs,subscribed:!NOBOTS,owner:false,muted:false,messages:[],feedIdx:0,feedFrom:now()-3*DAY};ch=true}});
+  Object.entries(FEEDS).forEach(([k,F])=>{const id='f_'+k;if(!S.chats[id]){S.chats[id]={id,type:'channel',feed:k,title:F.title,emoji:F.emoji,color:F.color,desc:F.desc,subs:F.subs,subscribed:!EMPTYSTART,owner:false,muted:false,messages:[],feedIdx:0,feedFrom:now()-3*DAY};ch=true}});
   Object.keys(FEEDS).forEach(k=>{const c=S.chats['f_'+k];if(c&&FEED_IMG[k]&&c.avatar!==FEED_IMG[k]){c.avatar=FEED_IMG[k];ch=true}});
+  if(REAL&&S.noBots===1&&S.botsBack!==1){S.botsBack=1;Object.keys(FEEDS).forEach(k=>{const o=S.chats['f_'+k];if(!o)return;const sub=o.subscribed,mu=o.muted;delete S.chats['f_'+k];S.chats['f_'+k]={id:'f_'+k,type:'channel',feed:k,title:FEEDS[k].title,emoji:FEEDS[k].emoji,color:FEEDS[k].color,desc:FEEDS[k].desc,subs:FEEDS[k].subs+(sub?1:0),subscribed:sub,owner:false,muted:mu,messages:[],feedIdx:0,feedFrom:now()-3*DAY,avatar:FEED_IMG[k]}});Object.keys(NEWS).forEach(k=>{const c=S.chats['n_'+k];if(c)c.subs=NEWS[k].subs+(c.subscribed?1:0)});Object.keys(FEEDS).forEach(k=>delete FEED_CACHE[k]);ch=true}
   if(NOBOTS&&S.noBots!==1){S.noBots=1;Object.values(S.chats).filter(c=>c.feed||c.news).forEach(c=>{c.subscribed=false;c.subs=0;c.messages.forEach(m=>{m.reactions={};m.views=0;if(m.poll)m.poll.opts.forEach(o=>o.v=0)})});Object.keys(S.chats).filter(id=>S.chats[id].discussion).forEach(id=>delete S.chats[id]);Object.keys(S.users).filter(id=>S.users[id].bot).forEach(id=>delete S.users[id]);ch=true}
   if(ch)save();
 }
@@ -2303,8 +2309,7 @@ function botTick(){
   const feeds=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);
   if(feeds.length){const c=feeds[Math.floor(Math.random()*feeds.length)];const recent=c.messages.slice(-6);const m=recent[Math.floor(Math.random()*recent.length)];
     if(m&&!m.sys){const e=Object.keys(m.reactions||{}).length&&Math.random()<.92?Object.keys(m.reactions)[Math.floor(Math.random()*Object.keys(m.reactions).length)]:E[Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=1+Math.floor(Math.random()*4);m.views=(m.views||0)+3+Math.floor(Math.random()*20);touched=c}}}
-  if(!DEMO){if(touched){save();if(T.openChat===touched.id)renderMessages()}return}
-  Object.values(S.chats).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<.2){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v++;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
+  Object.values(S.chats).filter(c=>!c.remote&&(!REAL||c.type==='channel')).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<.2){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v++;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
   Object.values(S.chats).filter(c=>c.type==='channel'&&c.owner).forEach(c=>{
     const age=(t-(c.created||c.messages[0]?.time||t))/HOUR;const posts=c.messages.filter(m=>!m.sys).length;
     const cap=Math.floor(3+posts*6+age*2);
@@ -2437,7 +2442,7 @@ function discussionRespond(c,m){
 }
 /* bots chat among themselves now and then */
 function banterTick(){
-  if(NOBOTS)return;
+  if(NOCHAT)return;
   const open=S.chats[T.openChat];
   const list=Object.values(S.chats).filter(c=>c.discussion&&c.joined);
   if(!list.length)return;
@@ -2457,7 +2462,7 @@ const NEWS={il:{title:'Новости Израиля',emoji:'🇮🇱',color:'#1
   ru:{title:'Новости России',emoji:'🇷🇺',color:'#c8372d',desc:'Главное за день в России — кратко, своими словами, со ссылкой на источник.',subs:21700},
   bg:{title:'Новости Белграда',emoji:'🇷🇸',color:'#0c4076',desc:'Белград и Сербия: главное за день — кратко, своими словами, со ссылкой на источник.',subs:12900}};
 let NEWS_DOCS=[];
-function ensureNewsChannels(){let ch=false;Object.entries(NEWS).forEach(([k,N])=>{const id='n_'+k;if(!S.chats[id]){S.chats[id]={id,type:'channel',news:k,title:N.title,emoji:N.emoji,color:N.color,desc:N.desc,subs:NOBOTS?0:N.subs,subscribed:!NOBOTS,owner:false,muted:false,messages:[]};ch=true}});if(ch)save()}
+function ensureNewsChannels(){let ch=false;Object.entries(NEWS).forEach(([k,N])=>{const id='n_'+k;if(!S.chats[id]){S.chats[id]={id,type:'channel',news:k,title:N.title,emoji:N.emoji,color:N.color,desc:N.desc,subs:N.subs,subscribed:!EMPTYSTART,owner:false,muted:false,messages:[]};ch=true}});if(ch)save()}
 function applyNews(initial){
   const t=now();let any=false;
   NEWS_DOCS.forEach(d=>{const x=d.data;if(!x||!NEWS[x.ch]||!(x.time<=t))return;const c=S.chats['n_'+x.ch];if(!c)return;const mid='nw_'+d.id;
