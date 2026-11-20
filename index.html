@@ -19,7 +19,7 @@ try{
   const [{initializeApp},A,D]=await Promise.all([import(B+"firebase-app.js"),import(B+"firebase-auth.js"),import(B+"firebase-firestore.js")]);
   const app=initializeApp({apiKey:"AIzaSyACJhA3U54FW8Ta0FtcXnBMInE6fIqxNkc",authDomain:"messanger-aab05.firebaseapp.com",projectId:"messanger-aab05",storageBucket:"messanger-aab05.firebasestorage.app",messagingSenderId:"850388817543",appId:"1:850388817543:web:165d6d9b1e635430ae4a22"});
   const auth=A.getAuth(app);try{await A.setPersistence(auth,A.browserLocalPersistence)}catch(_){}
-  const db=D.getFirestore(app);
+  let db;try{db=D.initializeFirestore(app,{experimentalForceLongPolling:true})}catch(_){db=D.getFirestore(app)} // plain long-polling: Safari and some mobile networks hold back the last streamed update
   window.FB={app,auth,db,...A,...D};
 }catch(e){console.error(e);window.FB={err:e}}
 window.dispatchEvent(new Event("fb-ready"));
@@ -616,6 +616,7 @@ input[type=datetime-local]{color-scheme:dark}
 .vid.round .vdur{left:50%;top:auto;bottom:12px;transform:translateX(-50%)}
 .rr-ring.pl{pointer-events:none}.rr-ring.pl circle{stroke:#fff;stroke-width:3}
 .vid.round .vplay.rp{display:none;z-index:2}.vid.round.paused .vplay.rp{display:flex}
+.cl-snd{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:5;border:0;border-radius:22px;padding:12px 18px;background:#fff;color:#000;font:inherit;font-size:15px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
@@ -659,7 +660,8 @@ const KEY='msgr_clean_v1';const DEMO=false;
 let S=null;
 try{S=JSON.parse(localStorage.getItem(REAL?'msgr_real_v1':KEY)||'null')}catch(e){}
 if(!S||!S.v)S=seed();
-const save=()=>{try{localStorage.setItem(REAL?'msgr_real_v1':KEY,JSON.stringify(S))}catch(e){try{toast('Память браузера заполнена — удалите старые голосовые')}catch(_){}}};
+const slimRemote=function(k,v){if(k==='messages'&&this&&this.remote&&Array.isArray(v))return v.slice(-80).map(m=>{const o={...m};if(o.img&&o.img.length>30000)delete o.img;if(o.voice&&o.voice.src&&o.voice.src.length>30000)o.voice={...o.voice,src:''};if(o.payload)o.payload={...o.payload,img:o.payload.img&&o.payload.img.length>30000?undefined:o.payload.img};return o});return v};
+const save=()=>{try{localStorage.setItem(REAL?'msgr_real_v1':KEY,JSON.stringify(S,slimRemote))}catch(e){try{toast('Память браузера заполнена — удалите старые голосовые')}catch(_){}}};
 if(REAL){delete S.chats.p_anna;delete S.users.anna}
 if(!REAL&&!S.annaSeed){S.annaSeed=1;S.users.anna={name:'Анна',g:'f',color:'#e17076',phone:'+381 60 555 01 02',online:false,lastSeen:null,contact:true};S.chats.p_anna={id:'p_anna',type:'private',user:'anna',messages:[{id:uid(),from:'anna',text:'Привет! Это тестовый чат — запиши мне голосовое 🎙',time:Date.now()-60e3,status:'read',reactions:{}}],unread:1};save()}
 const T={typing:{},openChat:null,tab:'chats',folder:'all',q:'',animated:new Set(),spoilerSend:false,panelTab:'emoji',revealed:new Set()};
@@ -2314,7 +2316,10 @@ function handleExtra(sh,c){sh.addEventListener('click',e=>{const x=e.target.clos
 },true)}
 
 /* ===== real calls between people (WebRTC; signalling travels as hidden messages of the chat) ===== */
-const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302','stun:stun2.l.google.com:19302']}];
+const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}];
+function whenConnected(pc,ms){return new Promise(res=>{const ok=()=>['connected','completed'].includes(pc.iceConnectionState)||pc.connectionState==='connected';if(ok())return res(true);const t=setTimeout(()=>res(false),ms);const f=()=>{if(ok()){clearTimeout(t);res(true)}else if(pc.iceConnectionState==='failed'||pc.connectionState==='failed'){clearTimeout(t);res(false)}};pc.addEventListener('iceconnectionstatechange',f);pc.addEventListener('connectionstatechange',f)})}
+async function goLive(K){setCallStatus('Соединение…');const ok=await whenConnected(K.pc,20000);if(CALL!==K)return;if(!ok){toast('Звонок не соединился: сеть не пропускает звук. Попробуйте через Wi-Fi');endCall(K.dir==='out'?'cancelled':'declined');return}connectCall();const v=$('#clRemote');if(v&&v.paused)tapForSound(v)}
+function tapForSound(v){const p=v.play();if(p&&p.catch)p.catch(()=>{const ui=$('#callUI');if(!ui||ui.querySelector('.cl-snd'))return;const b=document.createElement('button');b.className='cl-snd';b.textContent='🔊 Нажмите, чтобы включить звук';ui.appendChild(b);b.onclick=()=>{v.muted=false;v.play().then(()=>b.remove()).catch(()=>{})}})}
 const RTCX={seen:new Set()};
 function sigSend(c,d){try{const F=FBX();return F.setDoc(F.doc(F.collection(F.db,'chats',c.rid,'messages')),{from:RT.uid,time:Date.now(),sig:d}).then(r=>r,()=>null)}catch(_){return Promise.resolve(null)}}
 function waitIce(pc){return new Promise(res=>{if(pc.iceGatheringState==='complete')return res();const t=setTimeout(res,2500);pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res()}})})}
@@ -2331,10 +2336,11 @@ function newPeer(){
     if(s==='disconnected'&&CALL.st==='active'){setCallStatus('Связь прерывается…');clearTimeout(CALL._dc);CALL._dc=setTimeout(()=>{if(CALL&&CALL.pc===pc&&pc.iceConnectionState!=='connected'&&pc.iceConnectionState!=='completed')endCall('ok')},9000)}};
   return pc;
 }
+function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}}
 function attachRemote(st){
   const ui=$('#callUI');if(!ui)return;let v=$('#clRemote');
   if(!v){v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.playsInline=true;ui.insertBefore(v,ui.querySelector('.cl-top'))}
-  v.srcObject=st;const p=v.play();if(p&&p.catch)p.catch(()=>{});
+  v.muted=false;v.srcObject=st;tapForSound(v);
   const hasV=()=>st.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted);
   const upd=()=>ui.classList.toggle('rvid',hasV());upd();st.getVideoTracks().forEach(t=>{t.onunmute=upd;t.onmute=upd;t.onended=upd});
 }
@@ -2345,7 +2351,7 @@ async function startRealCall(c,video,fromEl){
   if(!window.RTCPeerConnection||!navigator.mediaDevices){toast('Этот браузер не умеет звонить. Откройте мессенджер в Safari или Chrome');return}
   actx();const id=uid()+uid();
   CALL={cid:c.id,video,group:false,dir:'out',st:'calling',t0:0,muted:false,speaker:false,min:false,key:callKeyFrom(id),timers:[],raf:0,joined:[],real:true,callId:id};
-  buildCallUI(fromEl);setCallStatus('Соединение…');
+  buildCallUI(fromEl);primeRemote();setCallStatus('Соединение…');
   try{
     const st=await getMedia(video);if(!CALL||CALL.callId!==id){st.getTracks().forEach(t=>t.stop());return}
     CALL.local=st;CALL.stream=st;CALL.video=st.getVideoTracks().length>0;showSelf(st);
@@ -2366,7 +2372,7 @@ function incomingRealCall(c,sig,from){
   CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},45000));
 }
 async function acceptRealCall(){
-  const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
+  const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
   try{
     const st=await getMedia(K.video);if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
     K.local=st;K.stream=st;showSelf(st);
@@ -2375,14 +2381,14 @@ async function acceptRealCall(){
     await pc.setLocalDescription(await pc.createAnswer());await waitIce(pc);
     if(CALL!==K)return;
     await sigSend(c,{t:'answer',id:K.callId,sdp:pc.localDescription.sdp});
-    connectCall();
+    goLive(K);
   }catch(e){toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к микрофону, чтобы ответить':'Не удалось ответить на звонок');endCall('declined')}
 }
 function handleSig(c,doc,x){
   if(x.from===RT.uid)return;const key=doc.id;if(RTCX.seen.has(key))return;RTCX.seen.add(key);
   const s=x.sig||{};if(Date.now()-(x.time||0)>45000&&s.t==='offer')return;
   if(s.t==='offer')incomingRealCall(c,s,x.from);
-  else if(s.t==='answer'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.pc&&CALL.st!=='active'){CALL.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).then(()=>connectCall()).catch(()=>{toast('Не удалось соединиться');endCall('cancelled')})}}
+  else if(s.t==='answer'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.pc&&CALL.st==='ringing'){const K=CALL;stopTones();CALL.st='connecting';CALL.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).then(()=>goLive(K)).catch(()=>{toast('Не удалось соединиться');endCall('cancelled')})}}
   else if(s.t==='end'){if(CALL&&CALL.real&&CALL.callId===s.id){CALL.remoteEnded=true;endCall(s.r==='busy'?'declined':s.r==='declined'?'declined':CALL.st==='active'?'ok':CALL.dir==='in'?'missed':'cancelled')}}
 }
 function realCallCleanup(K,res,dur){
@@ -3458,6 +3464,6 @@ renderMain();
 if(DEMO)setTimeout(()=>{const c=S.chats.p_u1;if(c&&S.users.u1.online&&!T.typing[c.id])scheduleReply(c,'u1')},6000);
 })();
 </script>
-<script>try{if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}catch(_){}</script>
+<script>try{if('serviceWorker' in navigator){let had=!!navigator.serviceWorker.controller,rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!rl){rl=true;location.reload()}});addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();setInterval(()=>r.update(),30*60000)}).catch(()=>{}))}}catch(_){}</script>
 </body>
 </html>
