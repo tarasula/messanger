@@ -698,7 +698,7 @@ function iWrote(c){return c.messages.some(m=>m.from==='me')}
 function visibleInList(c){
   if(c.remote)return c.type==='group'||c.messages.some(m=>!m.sys)||(c.pending&&c.pending.length>0);
   if(c.type==='channel')return c.subscribed||c.owner;
-  if(c.type==='group')return !c.discussion||!!c.joined;
+  if(c.type==='group')return c.discussion?(!NOCHAT&&!!c.joined):true;
   if(!c.messages.length)return false;
   return S.users[c.user].contact||iWrote(c)||c.archived;
 }
@@ -1038,7 +1038,7 @@ function renderChatHead(){
   const canCall=(c.type==='private'||(c.type==='group'&&!c.remote))&&!c.discussion;
   $('#chatHead').innerHTML=`<button class="back" id="backBtn">${IC.back}${other?`<span class="bk-b">${other}</span>`:''}</button><div class="ttl" id="ttl"><div class="n">${c.locked?'🔒 ':''}${esc(chatTitle(c))}${vbadge(c)}${c.muted?' 🔕':''}</div><div class="s ${st.blue?'blue':''}">${st.t}</div></div>${canCall?`<button class="hb" id="callBtn" aria-label="Позвонить">${IC.phone}</button>`:''}<button class="hb" id="dotsBtn" aria-label="Ещё">${IC.dots}</button><div id="hav" style="cursor:pointer">${avHTML(chatAvatarObj(c),36)}</div>`;
   $('#backBtn').onclick=closeChat;
-  $('#ttl').onclick=openProfile;$('#hav').onclick=c.feed?()=>openDiscussion(c.feed):openProfile;
+  $('#ttl').onclick=openProfile;$('#hav').onclick=c.feed&&!NOCHAT?()=>openDiscussion(c.feed):openProfile;
   $('#callBtn')?.addEventListener('click',e=>startCall(c.id,false,false,e.currentTarget));
   $('#dotsBtn').onclick=openChatMenu;
 }
@@ -2422,6 +2422,7 @@ function ensureFeeds(){
   Object.keys(FEEDS).forEach(k=>{const c=S.chats['f_'+k];if(c&&FEED_IMG[k]&&c.avatar!==FEED_IMG[k]){c.avatar=FEED_IMG[k];ch=true}});
   if(REAL&&S.noBots===1&&S.botsBack!==1){S.botsBack=1;Object.keys(FEEDS).forEach(k=>{const o=S.chats['f_'+k];if(!o)return;const sub=o.subscribed,mu=o.muted;delete S.chats['f_'+k];S.chats['f_'+k]={id:'f_'+k,type:'channel',feed:k,title:FEEDS[k].title,emoji:FEEDS[k].emoji,color:FEEDS[k].color,desc:FEEDS[k].desc,subs:FEEDS[k].subs+(sub?1:0),subscribed:sub,owner:false,muted:mu,messages:[],feedIdx:0,feedFrom:now()-3*DAY,avatar:FEED_IMG[k]}});Object.keys(NEWS).forEach(k=>{const c=S.chats['n_'+k];if(c)c.subs=NEWS[k].subs+(c.subscribed?1:0)});Object.keys(FEEDS).forEach(k=>delete FEED_CACHE[k]);ch=true}
   if(NOBOTS&&S.noBots!==1){S.noBots=1;Object.values(S.chats).filter(c=>c.feed||c.news).forEach(c=>{c.subscribed=false;c.subs=0;c.messages.forEach(m=>{m.reactions={};m.views=0;if(m.poll)m.poll.opts.forEach(o=>o.v=0)})});Object.keys(S.chats).filter(id=>S.chats[id].discussion).forEach(id=>delete S.chats[id]);Object.keys(S.users).filter(id=>S.users[id].bot).forEach(id=>delete S.users[id]);ch=true}
+  if(NOCHAT)Object.keys(S.chats).filter(id=>S.chats[id].discussion).forEach(id=>{delete S.chats[id];ch=true});
   if(ch)save();
 }
 function feedTick(initial){
@@ -2493,7 +2494,7 @@ function ensureDiscussion(k){
   }
   save();return S.chats[id];
 }
-function openDiscussion(k){const c=ensureDiscussion(k);if(!c)return;c.joined=true;save();openChat(c.id)}
+function openDiscussion(k){if(NOCHAT){const f=S.chats['f_'+k];if(f)openChat(f.id);return}const c=ensureDiscussion(k);if(!c)return;c.joined=true;save();openChat(c.id)}
 
 /* ---- phrase bank ---- */
 const PH={
