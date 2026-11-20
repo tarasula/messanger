@@ -1056,7 +1056,7 @@ function renderChatList(quiet){
       if(RT.searchHit){const u=RT.searchHit;html='<div class="sec-h">Найден по @нику</div><div class="item" data-ru="'+u.id+'">'+avHTML({name:u.name,color:colorFor(u.id),img:u.avatar},46)+'<div class="body"><div class="nm">'+esc(u.name)+'</div><div class="pv">@'+esc(u.username)+' · написать</div></div></div>'+html}}
     if(REAL&&RT.uid&&q.length>=2){if(RT.pubQ!==q){RT.pubQ=q;RT.pubHits=null;clearTimeout(RT.pt);RT.pt=setTimeout(async()=>{const r=await searchPublic(q);if(RT.pubQ===q){RT.pubHits=r;renderChatList()}},400)}
       const H=RT.pubHits;if(H){const chs=H.ch.filter(d=>!S.chats[pubLocalId(d.id)]?.subscribed);const grs=H.gr.filter(g=>!(S.chats['r_'+g.id]&&S.chats['r_'+g.id].members));
-        if(chs.length)html+='<div class="sec-h">Публичные каналы</div>'+chs.map((d,i)=>{const n=(d.bots||0)+(d.real||0);return `<div class="item" data-pub="${esc(d.id)}" style="animation-delay:${i*25}ms">${avHTML({name:d.title,color:d.color,img:d.avatar},46)}<div class="body"><div class="nm">📢 ${esc(d.title)}${n>=10000?VERIFY_SVG:''}</div><div class="pv">${fmtK(n)} ${plural(n>=1000?5:n,'подписчик','подписчика','подписчиков')}</div></div></div>`}).join('');
+        if(chs.length)html+='<div class="sec-h">Публичные каналы</div>'+chs.map((d,i)=>{const n=pgLive(d.id,(d.bots||0)+(d.real||0),d.pg||0);return `<div class="item" data-pub="${esc(d.id)}" style="animation-delay:${i*25}ms">${avHTML({name:d.title,color:d.color,img:d.avatar},46)}<div class="body"><div class="nm">📢 ${esc(d.title)}${n>=10000?VERIFY_SVG:''}</div><div class="pv">${fmtK(n)} ${plural(n>=1000?5:n,'подписчик','подписчика','подписчиков')}</div></div></div>`}).join('');
         if(grs.length)html+='<div class="sec-h">Публичные группы</div>'+grs.map((g,i)=>`<div class="item" data-pg="${esc(g.id)}" style="animation-delay:${i*25}ms">${avHTML({name:g.title,color:g.color,img:g.avatar},46)}<div class="body"><div class="nm">👥 ${esc(g.title)}</div><div class="pv">${g.count||1} ${plural(g.count||1,'участник','участника','участников')} · вступить</div></div></div>`).join('')}}
     if(!html)html='<div class="empty">'+(REAL?'Ничего не найдено. Чтобы найти человека, введите его @ник':'Ничего не найдено')+'</div>';
     ct.innerHTML=`<div class="tabpane">${html}</div>`;
@@ -2882,7 +2882,7 @@ function postPayload(m){const d={text:m.text||'',time:m.time||Date.now(),views:m
 /* ---- when the database rules are old: store statuses and public channels in the user's own profile (allowed by the old rules) ---- */
 function legacy(){return !!RT.oldRules}
 function legacyChEntry(c){const posts=c.messages.filter(m=>!m.sys).slice(-25).map(m=>{const p=postPayload(m);p.id=m.id;if(p.img&&p.img.length>110000)delete p.img;if(p.voice&&p.voice.src.length>150000)delete p.voice;return p});
-  let e={title:c.title,titleLower:(c.title||'').toLowerCase(),kw:kwOf(c.title),desc:c.desc||'',avatar:c.avatar&&c.avatar.length<60000?c.avatar:null,color:c.color||'#3e88f7',bots:c.subs||1,theme:(S.themeAll&&S.themeAll[c.id])||'def',updatedAt:Date.now(),posts};
+  let e={title:c.title,titleLower:(c.title||'').toLowerCase(),kw:kwOf(c.title),desc:c.desc||'',avatar:c.avatar&&c.avatar.length<60000?c.avatar:null,color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,theme:(S.themeAll&&S.themeAll[c.id])||'def',updatedAt:Date.now(),posts};
   while(JSON.stringify(e).length>420000&&e.posts.length>1)e.posts=e.posts.slice(1);return e}
 async function legacyWriteChannels(){if(!RT.uid)return false;const F=FBX();const mine=Object.values(S.chats).filter(c=>c.owner&&c.type==='channel'&&c.public);
   const pubch={};let kw=[];mine.forEach(c=>{pubch[c.id]=legacyChEntry(c);kw=kw.concat(pubch[c.id].kw)});
@@ -2895,7 +2895,7 @@ async function legacySearch(q){const F=FBX();const lo=q.toLowerCase();const norm
   return [...out.values()]}
 
 function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
-function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
+function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,created:c.created||now(),updatedAt:Date.now()}}
 function publishChannel(c){if(legacy()){$('#rulesBar')?.remove();c.public=true;save();return legacyWriteChannels().then(ok=>{if(!ok){c.public=false;save()}return ok})}
   return publishChannel0(c)}
 async function publishChannel0(c){
@@ -2928,7 +2928,7 @@ function ensurePubChat(id,d){
   const L=pubLocalId(id);let c=S.chats[L];
   if(!c)c=S.chats[L]={id:L,type:'channel',pubRid:id,title:d.title,desc:d.desc,avatar:d.avatar,color:d.color,subs:(d.bots||0)+(d.real||0),subscribed:false,owner:false,muted:false,messages:[]};
   S.themeAll=S.themeAll||{};if(d.theme&&d.theme!=='def')S.themeAll[L]=d.theme;else delete S.themeAll[L];if(T.openChat===L)applyTheme(L);
-  if(c){c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;c.subs=Math.max(c.subscribed?1:0,(d.bots||0)+(d.real||0))}
+  if(c){c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;const b=(d.bots||0)+(d.real||0);c._pg=d.pg?{b,at:d.pg}:null;c.subs=Math.max(c.subscribed?1:0,d.pg?pgLive(id,b,d.pg):b)}
   return c;
 }
 function mapPost(c,doc,prev){
@@ -4041,16 +4041,20 @@ function feedTick(initial){
   });
   if(any){save();if(T.openChat&&S.chats[T.openChat]?.feed)renderMessages();renderListIfVisible()}
 }
-/* from 1000 subscribers your channel gains 1–5 new subscribers every minute (also catches up after the app was closed), until 10 000 */
+/* from 1000 subscribers a channel gains 1–5 subscribers every minute until 10 000. The amount for each minute is fixed by the
+   channel id and the minute, so every phone computes the same number — it keeps growing for everyone even when the owner's app is closed */
+function pgAdd(id,from,to){let a=0;const k0=Math.floor(from/60000)+1,k1=Math.min(Math.floor(to/60000),k0+20160);for(let k=k0;k<=k1;k++)a+=1+(hash32(id+':'+k)%5);return a}
+function pgLive(id,base,at){if(!at||base>=10000)return base;return Math.min(10000,base+pgAdd(id,at,Date.now()))}
 function passiveGrow(){const t=Date.now();let any=null;
   Object.values(S.chats).filter(c=>c.type==='channel'&&c.owner&&!c.remote).forEach(c=>{
     if((c.subs||0)<1000||c.peakAt||(c.subs||0)>=10000){delete c.pgAt;return}
-    if(!c.pgAt){c.pgAt=t;any=c;return}
-    let n=Math.floor((t-c.pgAt)/60000);if(n<1)return;c.pgAt+=n*60000;n=Math.min(n,10080);
-    let add=0;for(let i=0;i<n;i++)add+=1+Math.floor(Math.random()*5);
-    c.subs=Math.min(10000,c.subs+add);c.subGrow=(c.subGrow||0)+add;if(c.subs>=10000&&!c.peakAt)c.peakAt=t;any=c;
+    if(!c.pgAt){c.pgAt=Math.floor(t/60000)*60000;any=c;return}
+    const to=Math.floor(t/60000)*60000;if(to<=c.pgAt)return;const add=pgAdd(c.id,c.pgAt,to);c.pgAt=to;
+    c.subs=Math.min(10000,c.subs+add);c.subGrow=(c.subGrow||0)+add;if(c.subs>=10000&&!c.peakAt){c.peakAt=t;delete c.pgAt}any=c;
     if(T.openChat===c.id)try{updateHeadStatus()}catch(_){}
-    try{if(c.public)pubSyncMeta(c)}catch(_){}});
+    try{if(c.public&&t-(c._pgSync||0)>10*60000){c._pgSync=t;pubSyncMeta(c,true)}}catch(_){}});
+  /* channels of other people: keep counting up between updates from the owner */
+  Object.values(S.chats).filter(c=>c.pubRid&&!c.owner&&c._pg).forEach(c=>{const n=Math.max(c.subscribed?1:0,pgLive(c.pubRid,c._pg.b,c._pg.at));if(n!==c.subs){c.subs=n;any=any||c;if(T.openChat===c.id)try{updateHeadStatus()}catch(_){}}});
   if(any){save();renderListIfVisible()}}
 setInterval(passiveGrow,15000);setTimeout(passiveGrow,3000);
 /* bots react to fan posts; your own channels slowly gain subscribers and a few reactions (demo only) */
