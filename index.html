@@ -2238,7 +2238,7 @@ function musicOnOpen(cid){
 function musicOnClose(){MPLAY.pause();hideMusicBar()}
 function showMusicBar(cid){
   let b=$('#musicBar');if(!b){b=document.createElement('div');b.id='musicBar';b.className='musicbar';$('#chat').appendChild(b)}
-  const paint=()=>{b.innerHTML=`<span class="mb-eq ${MPLAY.paused?'':'on'}"><i></i><i></i><i></i></span><span class="mb-n">${esc(S.music[cid]?.name||'Музыка')}</span><button data-m="pp">${MPLAY.paused?'▶':'⏸'}</button><button data-m="x">✕</button>`};
+  const paint=()=>{b.innerHTML=`<span class="mb-eq ${MPLAY.paused?'':'on'}"><i></i><i></i><i></i></span><span class="mb-n">${esc(S.music[cid]?.name||'Музыка')}</span><button data-m="pp">${MPLAY.paused?'▶':'⏸'}</button>`};
   paint();b.classList.add('show');
   b.onclick=e=>{const a=e.target.closest('[data-m]')?.dataset.m;if(a==='pp'){if(MPLAY.paused)MPLAY.play().catch(()=>{});else MPLAY.pause();setTimeout(paint,60)}if(a==='x'){MPLAY.pause();hideMusicBar()}};
 }
@@ -2284,7 +2284,7 @@ function extraRows(c){ // the WhatsApp-style rows shared by every chat profile
    <div class="grp">
     <div class="r" data-x="ring"><span class="ico" style="background:#ff9500">🔔</span>Уведомления<span class="v">${c.muted?'Выкл.':ringOf(c.id).n}</span></div>
     <div class="r" data-x="theme"><span class="ico" style="background:linear-gradient(135deg,#ff9ec7,#7fb2ff)">🎨</span>Тема чата<span class="v">${(THEMES.find(x=>x.k===S.theme[c.id])||THEMES[0]).n}</span></div>
-    ${c.type==='channel'?`<div class="r" data-x="music"><span class="ico" style="background:#ff2d55">🎵</span>Музыка канала<span class="v">${S.music[c.id]?'Есть':'Нет'}</span></div>`:''}
+    ${c.type==='channel'&&(c.owner||!REAL)?`<div class="r" data-x="music"><span class="ico" style="background:#ff2d55">🎵</span>Музыка канала<span class="v">${S.music[c.id]?'Есть':'Нет'}</span></div>`:''}
     ${c.type!=='channel'?`<div class="r" data-x="ttl"><span class="ico" style="background:#30b0c7">⏱</span>Исчезающие сообщения<span class="v">${ttlLabel(c.id)}</span></div>`:''}
     <div class="r" data-x="lock"><span class="ico" style="background:#34c759">${c.locked?'🔓':'🔒'}</span>${c.locked?'Открыть чат (снять пароль)':'Закрыть чат'}</div></div>`;
 }
