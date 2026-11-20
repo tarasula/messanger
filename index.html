@@ -836,6 +836,10 @@ body.rtl .r .v{margin-left:0;margin-right:auto}
 .pf-top .lic.gx.solo,.empty .lic.gx.solo,.onb-ic .lic.gx.solo{color:var(--ac)}
 .nt-big{width:64px;height:64px;margin:0 auto;color:#ff3b30}.nt-big svg{width:100%;height:100%}
 body.rtl .lic.gx{margin-right:0;margin-left:.3em}
+.iab{position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 6px);z-index:9000;display:flex;gap:10px;align-items:center;padding:10px 12px;border:0;border-radius:16px;background:rgba(40,40,44,.96);color:#fff;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,.35);transform:translateY(-130%);transition:transform .28s cubic-bezier(.2,.9,.3,1.2);font:inherit}
+.iab.on{transform:none}.iab-av{flex:0 0 38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+.iab-t{display:flex;flex-direction:column;min-width:0;font-size:14px}.iab-t span{opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.rtl .iab{text-align:right}
 </style>
 </head>
 <body>
@@ -3862,7 +3866,7 @@ function chatPeers(c){if(c.type==='private')return [c.user];return (c.members||[
 function myName(){return S.me.name||('@'+(S.me.username||''))}
 /* called after a message was written to the server */
 function pushForMessage(c,d,pv){if(!c||!c.remote||d.sig||d.part||d.themeSet!==undefined||d.call)return;
-  const peers=chatPeers(c).filter(u=>!(S.users[u]&&S.users[u].online&&c.type==='private'));if(!peers.length)return;
+  const peers=chatPeers(c);if(!peers.length)return;
   const inc=typeof incog==='function'&&incog();
   const title=c.type==='private'?myName():(c.title||'Группа');
   const body=inc?'Новое сообщение':(c.type==='private'?'':myName()+': ')+(pv||'Сообщение');
@@ -3909,7 +3913,18 @@ function openNotifSettings(){const st=pushState();const on=st==='granted'&&S.pus
      else setTimeout(async()=>{const reg=await navigator.serviceWorker.getRegistration();reg&&reg.showNotification('Мессенджер',{body:'Уведомления работают',icon:'icon-192.png',tag:'test'})},5000)})})}
 /* opened from a notification */
 function openFromPush(rid){if(!rid)return;const go=(n)=>{const c=Object.values(S.chats).find(x=>x.rid===rid||x.id===rid);if(c){if(T.openChat!==c.id)openChat(c.id);return}if(n<40)setTimeout(()=>go(n+1),300)};go(0)}
-try{navigator.serviceWorker&&navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type==='open')openFromPush(d.chat)})}catch(_){}
+try{navigator.serviceWorker&&navigator.serviceWorker.addEventListener('message',async e=>{const d=e.data||{};if(d.type==='open')openFromPush(d.chat);
+  if(d.type==='push'&&d.d&&d.d.t==='msg'&&!document.hidden){try{const reg=await navigator.serviceWorker.getRegistration();(await reg.getNotifications({tag:d.d.tag})).forEach(n=>n.close())}catch(_){}}})}catch(_){}
+/* banner at the top when a message comes into another chat while the app is open */
+function inAppBanner(c,m){try{if(document.hidden||!c||c.muted||T.openChat===c.id||!m)return;const u=S.users[m.from]||{};
+  const name=c.type==='private'?(u.name||'Сообщение'):(c.title||'Группа');
+  const txt=m.text?m.text:m.voice?'Голосовое сообщение':m.video?(m.video.round?'Видеосообщение':'Видео'):m.img?'Фото':m.sticker?'Стикер':m.poll?'Опрос':'Новое сообщение';
+  document.querySelectorAll('.iab').forEach(x=>x.remove());const b=document.createElement('button');b.className='iab';
+  const av=c.type==='private'?u.avatar:c.avatar;const col=(c.type==='private'?u.color:c.color)||'#65aadd';
+  b.innerHTML=`<span class="iab-av" style="background:${av?`center/cover url(${av})`:col}">${av?'':esc((name||'?')[0])}</span><span class="iab-t"><b>${esc(name)}</b><span>${esc((c.type!=='private'&&u.name?u.name+': ':'')+txt).slice(0,120)}</span></span>`;
+  b.onclick=()=>{b.remove();if(T.openChat!==c.id)openChat(c.id)};document.body.appendChild(b);requestAnimationFrame(()=>b.classList.add('on'));
+  let y0=null;b.addEventListener('touchstart',e=>y0=e.touches[0].clientY,{passive:true});b.addEventListener('touchmove',e=>{if(y0!=null&&e.touches[0].clientY-y0<-20){b.classList.remove('on');setTimeout(()=>b.remove(),250)}},{passive:true});
+  setTimeout(()=>{b.classList.remove('on');setTimeout(()=>b.remove(),300)},4500)}catch(_){}}
 try{const q=new URLSearchParams(location.search);const r=q.get('open');if(r){history.replaceState(null,'',location.pathname);setTimeout(()=>openFromPush(r),800)}}catch(_){}
 /* re-save the subscription on start (the phone may rotate it) */
 setTimeout(()=>{if(S.pushOn&&pushState()==='granted'&&REAL)(function w(n){if(RT.uid)enablePush();else if(n<30)setTimeout(()=>w(n+1),1000)})(0)},3000);
@@ -4313,7 +4328,7 @@ function watchMessages(c,attempt){
     const docs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<55000)handleSig(c,d,x);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
     const known=new Set(c.messages.map(m=>m.id));
     const list=docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
-    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{localNotify(c,list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop())}catch(_){}}first=false;
+    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();localNotify(c,nm);inAppBanner(c,nm)}catch(_){}}first=false;
     list.sort((a,b)=>a.time-b.time);
     {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
     c.messages=list.concat(c.pending||[]);
