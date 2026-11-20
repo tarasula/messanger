@@ -2654,9 +2654,25 @@ const PUB={unsub:{},ownUnsub:{},lastSync:{}};
 function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
 function smallAv(src){return src&&src.length<120000?src:null}
 function postPayload(m){const d={text:m.text||'',time:m.time||Date.now()};if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
+
+/* ---- when the database rules are old: store statuses and public channels in the user's own profile (allowed by the old rules) ---- */
+function legacy(){return !!RT.oldRules}
+function legacyChEntry(c){const posts=c.messages.filter(m=>!m.sys).slice(-25).map(m=>{const p=postPayload(m);p.id=m.id;if(p.img&&p.img.length>110000)delete p.img;if(p.voice&&p.voice.src.length>150000)delete p.voice;return p});
+  let e={title:c.title,titleLower:(c.title||'').toLowerCase(),kw:kwOf(c.title),desc:c.desc||'',avatar:c.avatar&&c.avatar.length<60000?c.avatar:null,color:c.color||'#3e88f7',bots:c.subs||1,theme:(S.themeAll&&S.themeAll[c.id])||'def',updatedAt:Date.now(),posts};
+  while(JSON.stringify(e).length>420000&&e.posts.length>1)e.posts=e.posts.slice(1);return e}
+async function legacyWriteChannels(){if(!RT.uid)return false;const F=FBX();const mine=Object.values(S.chats).filter(c=>c.owner&&c.type==='channel'&&c.public);
+  const pubch={};let kw=[];mine.forEach(c=>{pubch[c.id]=legacyChEntry(c);kw=kw.concat(pubch[c.id].kw)});
+  try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{pubch,chkw:[...new Set(kw)].slice(0,400)});return true}catch(e){toast('Канал не сохранился: '+fbErr(e));return false}}
+let LEG_T=0;function legacySoon(){clearTimeout(LEG_T);LEG_T=setTimeout(legacyWriteChannels,1500)}
+async function legacySearch(q){const F=FBX();const lo=q.toLowerCase();const norm=t=>(t||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,'');const nq=norm(q);const out=new Map();
+  const take=d=>{const u=d.data();if(!u.pubch||d.id===RT.uid)return;Object.entries(u.pubch).forEach(([id,e])=>{if((e.kw||[]).includes(lo)||norm(e.title).includes(nq))out.set(id,{id,legacyOwner:d.id,...e})})};
+  try{(await F.getDocs(F.query(F.collection(F.db,'users'),F.where('chkw','array-contains',lo),F.limit(10)))).docs.forEach(take)}catch(_){}
+  try{(await F.getDocs(F.query(F.collection(F.db,'users'),F.limit(300)))).docs.forEach(take)}catch(_){}
+  return [...out.values()]}
+
 function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
 function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
-function publishChannel(c){if(RT.oldRules){showRulesBar();toast('Сначала обновите правила базы — нажмите на жёлтую полоску сверху')}
+function publishChannel(c){if(legacy()){c.public=true;save();return legacyWriteChannels().then(ok=>{if(!ok){c.public=false;save()}return ok})}
   return publishChannel0(c)}
 async function publishChannel0(c){
   if(!pubReady()){toast('Войдите в аккаунт, чтобы сделать канал публичным');return false}
@@ -2668,16 +2684,16 @@ async function publishChannel0(c){
   }catch(e){toast(e&&e.code==='permission-denied'?'Сервер не пускает: обновите правила базы (я прислал новые)':fbErr(e));return false}
 }
 async function unpublishChannel(c){
-  const F=FBX();c.public=false;save();
+  const F=FBX();c.public=false;save();if(legacy()){await legacyWriteChannels();return}
   try{PUB.ownUnsub[c.id]&&PUB.ownUnsub[c.id]();delete PUB.ownUnsub[c.id];
     const ps=await F.getDocs(F.collection(F.db,'pubchannels',c.id,'posts'));for(const d of ps.docs)await F.deleteDoc(d.ref);
     await F.deleteDoc(F.doc(F.db,'pubchannels',c.id))}catch(_){}
 }
-function pubPost(c,m){if(!c||!c.public||!c.owner||!pubReady())return;const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
-function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
-function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<20000)return;PUB.lastSync[c.id]=t;
+function pubPost(c,m){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
+function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
+function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<(legacy()?60000:20000))return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
   const F=FBX();const d=chDoc(c);delete d.created;F.updateDoc(F.doc(F.db,'pubchannels',c.id),d).catch(()=>{})}
-function watchOwnPub(c){ // real people who subscribed are added to the owner's count too
+function watchOwnPub(c){if(legacy())return; // real people who subscribed are added to the owner's count too
   if(PUB.ownUnsub[c.id]||!pubReady())return;const F=FBX();
   PUB.ownUnsub[c.id]=F.onSnapshot(F.doc(F.db,'pubchannels',c.id),d=>{if(!d.exists())return;const r=d.data().real||0;const prev=c.realSubs||0;if(r!==prev){c.subs=Math.max(1,(c.subs||1)+(r-prev));c.realSubs=r;save();if(T.openChat===c.id)updateHeadStatus()}},()=>{});
 }
@@ -2704,6 +2720,9 @@ function mapPost(c,doc,prev){
 }
 function watchPub(c){
   if(!c.pubRid||PUB.unsub[c.id]||!pubReady())return;const F=FBX();
+  if(c.legacyOwner){PUB.unsub[c.id]=F.onSnapshot(F.doc(F.db,'users',c.legacyOwner),d=>{const e=d.exists()&&d.data().pubch&&d.data().pubch[c.pubRid];if(!e){c.gone=true;return}
+      ensurePubChat(c.pubRid,e);const old=new Map(c.messages.map(m=>[m.id,m]));c.messages=(e.posts||[]).map(p=>mapPost(c,{id:p.id,data:()=>p},old.get(p.id))).sort((a,b)=>a.time-b.time);
+      save();if(T.openChat===c.id){renderChatHead();updateHeadStatus();renderMessages()}renderListIfVisible()},()=>{});return}
   const u1=F.onSnapshot(F.doc(F.db,'pubchannels',c.pubRid),d=>{if(!d.exists()){c.gone=true;if(T.openChat===c.id)renderChatHead();return}ensurePubChat(c.pubRid,d.data());save();if(T.openChat===c.id){renderChatHead();updateHeadStatus()}renderListIfVisible()},()=>{});
   const u2=F.onSnapshot(F.query(F.collection(F.db,'pubchannels',c.pubRid,'posts'),F.orderBy('time','desc'),F.limit(100)),snap=>{
     const old=new Map(c.messages.map(m=>[m.id,m]));c.messages=snap.docs.map(d=>mapPost(c,d,old.get(d.id))).sort((a,b)=>a.time-b.time);
@@ -2711,20 +2730,20 @@ function watchPub(c){
   PUB.unsub[c.id]=()=>{u1();u2()};
 }
 function unwatchPub(c){PUB.unsub[c.id]&&PUB.unsub[c.id]();delete PUB.unsub[c.id]}
-function pubSubscribed(c,on){if(!c.pubRid||!pubReady())return;const F=FBX();F.updateDoc(F.doc(F.db,'pubchannels',c.pubRid),{real:F.increment(on?1:-1)}).catch(()=>{})}
+function pubSubscribed(c,on){if(!c.pubRid||!pubReady()||c.legacyOwner)return;const F=FBX();F.updateDoc(F.doc(F.db,'pubchannels',c.pubRid),{real:F.increment(on?1:-1)}).catch(()=>{})}
 async function searchPublic(q){
   if(!pubReady()||q.length<2)return {ch:[],gr:[]};const F=FBX();const lo=q.toLowerCase();
   const run=async col=>{const got=new Map();
     try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.where('kw','array-contains',lo),F.limit(10)));s.docs.forEach(d=>got.set(d.id,{id:d.id,...d.data()}))}catch(_){}
     try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.orderBy('titleLower'),F.startAt(lo),F.endAt(lo+''),F.limit(8)));s.docs.forEach(d=>got.set(d.id,{id:d.id,...d.data()}))}catch(_){}
     return [...got.values()]};
-  let [ch,gr]=await Promise.all([run('pubchannels'),run('pubgroups')]);
+  let [ch,gr,lg]=await Promise.all([run('pubchannels'),run('pubgroups'),legacySearch(q)]);{const ids=new Set(ch.map(x=>x.id));lg.forEach(x=>{if(!ids.has(x.id))ch.push(x)})}
   const norm=t=>(t||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,'');const nq=norm(q);
   if(nq){const scan=async col=>{try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.limit(300)));return s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>norm(x.title).includes(nq))}catch(_){return []}};
     const [c2,g2]=await Promise.all([scan('pubchannels'),scan('pubgroups')]);const add=(arr,more)=>{const ids=new Set(arr.map(x=>x.id));more.forEach(x=>{if(!ids.has(x.id))arr.push(x)})};add(ch,c2);add(gr,g2)}
   return {ch:ch.filter(x=>!(S.chats[x.id]&&S.chats[x.id].owner)||true).filter(x=>!S.chats[x.id]),gr};
 }
-function openPublicChannel(d){const c=ensurePubChat(d.id,d);save();watchPub(c);openChat(c.id)}
+function openPublicChannel(d){const c=ensurePubChat(d.id,d);if(d.legacyOwner)c.legacyOwner=d.legacyOwner;save();watchPub(c);openChat(c.id)}
 /* public groups */
 async function setGroupPublic(c,on){
   const F=FBX();
@@ -2748,7 +2767,8 @@ function openPrivacy(c){
   openSheet(isG?'Тип группы':'Тип канала',chk+`<div class="grp">
     <div class="r pv-o" data-p="0"><span class="ico" style="background:#8e8e93">🔒</span><div class="st-b"><div>Приватный</div><div class="sm">${isG?'Найти группу нельзя, попасть можно только по приглашению':'Канал видите только вы'}</div></div><span class="v chk">${on?'':'✓'}</span></div>
     <div class="r pv-o" data-p="1"><span class="ico" style="background:#34c759">🌍</span><div class="st-b"><div>Публичный</div><div class="sm">${isG?'Любой человек найдёт группу в поиске и сможет вступить':'Любой человек найдёт канал в поиске и сможет подписаться'}</div></div><span class="v chk">${on?'✓':''}</span></div></div>`,sh=>{
-    if(on&&pubReady()){const F=FBX();F.getDoc(F.doc(F.db,isG?'pubgroups':'pubchannels',isG?c.rid:c.id)).then(d=>{const p=sh.querySelector('#pvState');if(!p)return;p.innerHTML=d.exists()?'✓ На сервере — любой найдёт по названию «'+esc(c.title)+'»':'Не нашёл на сервере. <a href="#" id="pvFix">Опубликовать заново</a>';const fx=p.querySelector('#pvFix');if(fx)fx.onclick=async e=>{e.preventDefault();p.textContent='Публикую…';const ok=isG?await setGroupPublic(c,true):await publishChannel(c);p.textContent=ok?'✓ Опубликовано — теперь ищется':'Не получилось: проверьте, что правила базы обновлены'}}).catch(e=>{const p=sh.querySelector('#pvState');if(p)p.textContent='Сервер не отвечает: '+(e&&e.code||'ошибка')+'. Проверьте правила базы.'})}
+    if(on&&pubReady()&&legacy()){const p=sh.querySelector('#pvState');if(p)p.innerHTML='✓ Опубликовано — любой найдёт по названию «'+esc(c.title)+'»'}
+    else if(on&&pubReady()){const F=FBX();F.getDoc(F.doc(F.db,isG?'pubgroups':'pubchannels',isG?c.rid:c.id)).then(d=>{const p=sh.querySelector('#pvState');if(!p)return;p.innerHTML=d.exists()?'✓ На сервере — любой найдёт по названию «'+esc(c.title)+'»':'Не нашёл на сервере. <a href="#" id="pvFix">Опубликовать заново</a>';const fx=p.querySelector('#pvFix');if(fx)fx.onclick=async e=>{e.preventDefault();p.textContent='Публикую…';const ok=isG?await setGroupPublic(c,true):await publishChannel(c);p.textContent=ok?'✓ Опубликовано — теперь ищется':'Не получилось: проверьте, что правила базы обновлены'}}).catch(e=>{const p=sh.querySelector('#pvState');if(p)p.textContent='Сервер не отвечает: '+(e&&e.code||'ошибка')+'. Проверьте правила базы.'})}
     sh.querySelectorAll('[data-p]').forEach(r=>r.onclick=async()=>{const want=r.dataset.p==='1';if(want===!!c.public){closePopups();return}
       r.style.opacity=.5;let ok;
       if(isG)ok=await setGroupPublic(c,want);else if(want)ok=await publishChannel(c);else{await unpublishChannel(c);ok=true}
@@ -2756,11 +2776,11 @@ function openPrivacy(c){
   });
 }
 function rulesCheck(){if(!REAL||!RT.uid||RT.rulesChecked)return;RT.rulesChecked=1;const F=FBX();
-  F.getDoc(F.doc(F.db,'statuses',RT.uid)).then(()=>{RT.oldRules=false;$('#rulesBar')?.remove()}).catch(e=>{if(e&&e.code==='permission-denied'){RT.oldRules=true;showRulesBar()}})}
-function showRulesBar(){if($('#rulesBar')||!$('#mainTop'))return;const b=document.createElement('button');b.id='rulesBar';b.className='rulesbar';b.innerHTML='⚠️ На сервере старые правила — каналы и статусы не работают. Нажмите, как исправить';$('#mainTop').appendChild(b);
+  F.getDoc(F.doc(F.db,'statuses',RT.uid)).then(()=>{RT.oldRules=false;$('#rulesBar')?.remove();watchStatuses()}).catch(e=>{if(e&&e.code==='permission-denied'){RT.oldRules=true;showRulesBar()}watchStatuses();restorePub()})}
+function showRulesBar(){if($('#rulesBar')||!$('#mainTop'))return;const b=document.createElement('button');b.id='rulesBar';b.className='rulesbar';b.innerHTML='ℹ️ Каналы и статусы работают. Для видео в статусах и счётчика живых подписчиков обновите правила базы — нажмите';$('#mainTop').appendChild(b);
   b.onclick=()=>openSheet('Обновить правила базы',`<div class="pf-top"><p class="pf-desc" style="text-align:left">Сервер пока не пускает публичные каналы и статусы. Это настраивается один раз:<br><br>1. Откройте <b>console.firebase.google.com</b> → проект <b>messanger-aab05</b>.<br>2. Слева <b>Firestore Database</b> → вкладка <b>Rules</b>.<br>3. Удалите всё и вставьте текст из файла <b>firestore-rules.txt</b>, который прислал Claude.<br>4. Нажмите <b>Publish</b> и подождите минуту.<br>5. Закройте и откройте мессенджер.</p></div>`)}
 setInterval(()=>{if(RT.uid&&!RT.rulesChecked)rulesCheck()},3000);
-function restorePub(){if(!pubReady())return;PUB.checked=PUB.checked||{};Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public){watchOwnPub(c);if(!PUB.checked[c.id]){PUB.checked[c.id]=1;const F=FBX();F.getDoc(F.doc(F.db,'pubchannels',c.id)).then(d=>{if(!d.exists())publishChannel(c);else pubSyncMeta(c,true)}).catch(()=>{})}}})}
+function restorePub(){if(!pubReady())return;PUB.checked=PUB.checked||{};if(legacy()&&!PUB.legDone&&Object.values(S.chats).some(c=>c.owner&&c.public)){PUB.legDone=1;legacyWriteChannels()}Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public){watchOwnPub(c);if(!PUB.checked[c.id]&&RT.oldRules===false){PUB.checked[c.id]=1;const F=FBX();F.getDoc(F.doc(F.db,'pubchannels',c.id)).then(d=>{if(!d.exists())publishChannel(c);else pubSyncMeta(c,true)}).catch(()=>{})}}})}
 
 setInterval(restorePub,5000);
 /* ===== own line icons instead of emoji in menus and settings ===== */
@@ -2911,7 +2931,9 @@ function avColor(src,fallback){if(!src)return Promise.resolve(fallback||'#3e88f7
 function liveItems(arr){const t=Date.now();return (arr||[]).filter(x=>t-x.time<ST_TTL)}
 function stSeen(uid,arr){const L=liveItems(arr);if(!L.length)return true;S.stSeen=S.stSeen||{};return L.every(x=>S.stSeen[x.id])}
 function watchStatuses(){
-  if(!REAL||!RT.uid||!window.FB||!FB.db)return;const F=FBX();
+  if(!REAL||!RT.uid||!window.FB||!FB.db||RT.oldRules===undefined)return;const F=FBX();
+  if(legacy()){stPartners().forEach(id=>{if(ST.unsub['u'+id])return;ST.unsub['u'+id]=F.onSnapshot(F.doc(F.db,'users',id),d=>{const st=d.exists()&&d.data().st;if(st&&st.items)ST.items[id]={items:st.items,updatedAt:st.updatedAt};else if(!ST.unsub[id])ST.items[id]=null;renderStories()},()=>{})});
+    if(!ST.unsub['u'+RT.uid])ST.unsub['u'+RT.uid]=F.onSnapshot(F.doc(F.db,'users',RT.uid),d=>{const st=d.exists()&&d.data().st;ST.mine=st&&st.items?liveItems(st.items):[];renderStories()},()=>{});return}
   stPartners().forEach(id=>{if(ST.unsub[id])return;
     ST.unsub[id]=F.onSnapshot(F.doc(F.db,'statuses',id),d=>{ST.items[id]=d.exists()?d.data():null;renderStories()},()=>{ST.items[id]=null});});
   if(!ST.unsub[RT.uid])ST.unsub[RT.uid]=F.onSnapshot(F.doc(F.db,'statuses',RT.uid),d=>{ST.mine=d.exists()?liveItems(d.data().items):[];renderStories()},()=>{});
@@ -2994,10 +3016,13 @@ async function publishStatus(it){
   // keep the card small enough for the server (about 900 KB)
   while(JSON.stringify(items).length>880000&&items.length>1)items=items.slice(1);
   if(JSON.stringify(items).length>880000){toast('Фото слишком большое для статуса');return false}
+  if(legacy()){if(items.some(x=>x.video)){toast('Видео и кружки в статусах заработают после обновления правил базы. Фото, текст и голос работают уже сейчас');items=items.filter(x=>!x.video);if(!items.length)return false}
+    while(JSON.stringify(items).length>560000&&items.length>1)items=items.slice(1);
+    try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{st:{items,updatedAt:Date.now()}});ST.mine=items;renderStories();return true}catch(e){toast('Статус не сохранился: '+fbErr(e));return false}}
   try{await F.setDoc(F.doc(F.db,'statuses',RT.uid),{items,aud:stPartners(),name:S.me.name||'',updatedAt:Date.now()});ST.mine=items;renderStories();return true}
   catch(e){toast(e&&e.code==='permission-denied'?'Сервер не пускает: обновите правила базы (я прислал новые)':fbErr(e));return false}
 }
-async function deleteMyStatuses(){if(!REAL){S.myStatus=[];save();renderStories();return}const F=FBX();try{try{const ms=await F.getDocs(F.collection(F.db,'statuses',RT.uid,'media'));for(const d of ms.docs)await F.deleteDoc(d.ref)}catch(_){}await F.deleteDoc(F.doc(F.db,'statuses',RT.uid));ST.mine=[];renderStories();toast('Статусы удалены')}catch(e){toast(fbErr(e))}}
+async function deleteMyStatuses(){if(!REAL){S.myStatus=[];save();renderStories();return}const F=FBX();if(legacy()){try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{st:null});ST.mine=[];renderStories();toast('Статусы удалены')}catch(e){toast(fbErr(e))}return}try{try{const ms=await F.getDocs(F.collection(F.db,'statuses',RT.uid,'media'));for(const d of ms.docs)await F.deleteDoc(d.ref)}catch(_){}await F.deleteDoc(F.doc(F.db,'statuses',RT.uid));ST.mine=[];renderStories();toast('Статусы удалены')}catch(e){toast(fbErr(e))}}
 setInterval(()=>{if(!REAL||!RT.uid||!ST.mine.length)return;const F=FBX();const aud=stPartners();F.updateDoc(F.doc(F.db,'statuses',RT.uid),{aud}).catch(()=>{})},60000);
 function openStoryViewer(who,items){
   if(!items.length)return;let i=0,t0=0,raf=0,paused=false,acc=0;const DUR=5000;
@@ -3646,7 +3671,7 @@ function cycleSpeed(btn){VP.speed=VP.speed===1?1.5:VP.speed===1.5?2:1;VP.audio.p
 
 /* ---- recording ---- */
 let REC=null;
-function pickMime(){const c=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];if(!window.MediaRecorder)return null;for(const t of c){try{if(MediaRecorder.isTypeSupported(t))return t}catch(_){}}return ''}
+function pickMime(){const c=['audio/mp4','audio/mp4;codecs=mp4a.40.2','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];if(!window.MediaRecorder)return null;for(const t of c){try{if(MediaRecorder.isTypeSupported(t))return t}catch(_){}}return ''}
 function micSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder)}
 function bindMic(btn){
   let sx=0,down=false,startT=0;
@@ -3708,11 +3733,12 @@ function hideRecUI(cancel){
 function toWav(blob,dur){return new Promise(async(res,rej)=>{try{
   const ab=await blob.arrayBuffer();const AC=window.AudioContext||window.webkitAudioContext;const ac=actx()||new AC();
   const buf=await new Promise((ok,no)=>{const p=ac.decodeAudioData(ab.slice(0),ok,no);if(p&&p.then)p.then(ok,no)});
-  const rate=dur>40?6000:8000;const OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
-  const len=Math.max(1,Math.ceil(buf.duration*rate));const off=new OAC(1,len,rate);const src=off.createBufferSource();src.buffer=buf;src.connect(off.destination);src.start(0);
-  const out=await new Promise((ok,no)=>{off.oncomplete=e=>ok(e.renderedBuffer);const p=off.startRendering();if(p&&p.then)p.then(ok,no)});
-  const d=out.getChannelData(0);let peak=0;for(let i=0;i<d.length;i++)peak=Math.max(peak,Math.abs(d[i]));const g=peak>0?Math.min(4,.9/peak):1;
-  const bits=dur>90?8:16;const bps=bits/8;const W=new ArrayBuffer(44+d.length*bps);const v=new DataView(W);const ws=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  const rate=dur>20?8000:12000;
+  // mix to mono and resample in plain JavaScript (works the same on every phone)
+  const chs=[];for(let c=0;c<buf.numberOfChannels;c++)chs.push(buf.getChannelData(c));
+  const srcLen=chs[0].length,ratio=buf.sampleRate/rate,len=Math.max(1,Math.floor(srcLen/ratio));const d=new Float32Array(len);
+  for(let i=0;i<len;i++){const p=i*ratio,a=Math.floor(p),f=p-a;let s1=0,s2=0;for(const ch of chs){s1+=ch[a]||0;s2+=ch[Math.min(srcLen-1,a+1)]||0}d[i]=(s1*(1-f)+s2*f)/chs.length}let peak=0;for(let i=0;i<d.length;i++)peak=Math.max(peak,Math.abs(d[i]));const g=peak>0?Math.min(4,.9/peak):1;
+  const bits=dur>40?8:16;const bps=bits/8;const W=new ArrayBuffer(44+d.length*bps);const v=new DataView(W);const ws=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
   ws(0,'RIFF');v.setUint32(4,36+d.length*bps,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*bps,true);v.setUint16(32,bps,true);v.setUint16(34,bits,true);ws(36,'data');v.setUint32(40,d.length*bps,true);
   for(let i=0;i<d.length;i++){const x=Math.max(-1,Math.min(1,d[i]*g));if(bits===16)v.setInt16(44+i*2,x<0?x*32768:x*32767,true);else v.setUint8(44+i,Math.round((x+1)*127.5))}
   res(new Blob([W],{type:'audio/wav'}))}catch(e){rej(e)}})}
@@ -3725,7 +3751,7 @@ function stopRec(send,why){
   R.rec.onstop=()=>{finish();const blob=new Blob(R.chunks,{type:R.rec.mimeType||'audio/webm'});
     const go=b=>blobToVoice(b,dur,downsample(R.samples)).then(v=>{sendMessage({voice:v,text:''})}).catch(()=>toast('Не удалось сохранить запись'));
     // one common format, so an iPhone hears an Android voice and back
-    (dur<=150?toWav(blob,dur).then(w=>w.size<640000?w:blob,()=>blob):Promise.resolve(blob)).then(go)};
+    (dur<=150?toWav(blob,dur).then(w=>w.size<640000?w:blob,e=>{console.warn('wav',e);return blob}):Promise.resolve(blob)).then(go)};
   try{R.rec.stop()}catch(_){}
   hideRecUI(false);tone([660],.06,.04);
 }
