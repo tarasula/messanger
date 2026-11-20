@@ -2301,6 +2301,7 @@ function feedTick(initial){
   if(any){save();if(T.openChat&&S.chats[T.openChat]?.feed)renderMessages();renderListIfVisible()}
 }
 /* bots react to fan posts; your own channels slowly gain subscribers and a few reactions (demo only) */
+function minViews(m){const r=Object.values(m.reactions||{}).reduce((x,v)=>x+(v.n||0),0);const p=m.poll?m.poll.opts.reduce((x,o)=>x+(o.v||0),0):0;return Math.max(r,p)+1}
 function botTick(){
   if(NOBOTS)return;
   {const fl=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*9);save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
@@ -2311,6 +2312,10 @@ function botTick(){
     if(m&&!m.sys){const e=Object.keys(m.reactions||{}).length&&Math.random()<.92?Object.keys(m.reactions)[Math.floor(Math.random()*Object.keys(m.reactions).length)]:E[Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=1+Math.floor(Math.random()*4);m.views=(m.views||0)+3+Math.floor(Math.random()*20);touched=c}}}
   Object.values(S.chats).filter(c=>!c.remote&&(!REAL||c.type==='channel')).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<.2){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v++;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
   Object.values(S.chats).filter(c=>c.type==='channel'&&c.owner).forEach(c=>{
+    // views: posts keep being seen by subscribers, and never trail behind votes and reactions
+    c.messages.filter(m=>!m.sys&&t-m.time<7*DAY).forEach(m=>{const target=Math.max(1,Math.floor(c.subs*(m._vk||(m._vk=.55+Math.random()*.35))));const floor=minViews(m);
+      let v=m.views||1;if(v<target&&Math.random()<.5){v+=1+Math.floor(Math.random()*Math.max(1,(target-v)/6));touched=touched||c}
+      if(v<floor){v=floor+Math.floor(Math.random()*3);touched=touched||c}m.views=Math.min(Math.max(v,floor),Math.max(target,floor))});
     const age=(t-(c.created||c.messages[0]?.time||t))/HOUR;const posts=c.messages.filter(m=>!m.sys).length;
     const cap=Math.floor(3+posts*6+age*2);
     if(c.subs<cap&&Math.random()<.18){const add=1+Math.floor(Math.random()*(c.subs>20?3:1));c.subs+=add;c.subGrow=(c.subGrow||0)+add;touched=touched||c;if(T.openChat===c.id)updateHeadStatus()}
@@ -2318,6 +2323,7 @@ function botTick(){
     if(own.length&&Math.random()<.12){const m=own[Math.floor(Math.random()*own.length)];const tot=Object.values(m.reactions||{}).reduce((a,v)=>a+v.n,0);
       if(tot<Math.max(2,Math.floor(c.subs*.15))){const e=['❤️','👍','🔥','😍'][Math.floor(Math.random()*4)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n++;m.views=Math.max(m.views||1,Math.min(c.subs,(m.views||1)+1+Math.floor(Math.random()*3)));touched=touched||c}}
   });
+  Object.values(S.chats).filter(c=>c.type==='channel'&&!c.remote).forEach(c=>c.messages.slice(-30).forEach(m=>{if(m.sys)return;const f=minViews(m);if((m.views||0)<f){m.views=f+Math.floor(Math.random()*4);touched=touched||c}}));
   if(touched){save();if(T.openChat===touched.id)renderMessages()}
 }
 
