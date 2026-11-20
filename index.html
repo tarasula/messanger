@@ -769,6 +769,10 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.55)}50%{box-shadow:0 0 0 22px rgba(255,59,48,0)}}
 .stc-mt{font-size:16px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.25)}.stc-mt.big{font-size:22px}
 .stc-again{border:0;background:none;color:#fff;font:inherit;text-decoration:underline;opacity:.85}
+.sc{display:flex;flex-direction:column;gap:12px}.sc-step{background:var(--sf);border-radius:14px;padding:14px}.sc-h{font-weight:700;margin-bottom:6px}.sc-step p{margin:0 0 10px;color:var(--tx2);font-size:14px;line-height:1.35}
+.sc-ans{display:flex;gap:8px;margin-top:10px;font-weight:600}.sc-ans button{flex:1;border:0;border-radius:12px;padding:10px;background:var(--bg,#000);color:var(--tx);font:inherit;font-weight:600}
+.sc-meter{height:8px;border-radius:4px;background:rgba(127,127,127,.25);overflow:hidden;margin-top:10px}.sc-meter i{display:block;height:100%;width:0;background:#34c759;transition:width .06s}
+.sc-res{margin-top:8px;font-size:14px}.sc-info{font-size:13.5px;color:var(--tx2);line-height:1.6}
 </style>
 </head>
 <body>
@@ -1052,6 +1056,7 @@ function renderSettings(){
      <div class="r" id="setAe"><span class="ico" style="background:#ff2d55">✨</span>Анимированные эмодзи<span class="sw ${S.animEmoji?'on':''}"></span></div>
      <div class="r" id="setArch"><span class="ico" style="background:#8e8e93">🗂</span>Архив и закрытые чаты<span class="v">потяните чаты вниз</span></div>
      ${REAL?`<div class="r" id="setOut"><span class="ico" style="background:#5856d6">🚪</span>Выйти из аккаунта</div><div class="r red" id="setDelAcc"><span class="ico" style="background:#ff3b30">🗑</span>Удалить аккаунт</div>`:''}
+     <div class="r" id="setSnd"><span class="ico" style="background:#ff9500">🔊</span>Проверка звука</div>
      <div class="r" id="setAbout"><span class="ico" style="background:#5856d6">ℹ️</span>О мессенджере</div>
      <div class="r" id="setBl"><span class="ico" style="background:#ff3b30">🚫</span>Заблокированные<span class="v">${Object.values(S.users).filter(u=>u.blocked).length}</span></div>
    </div>
@@ -1068,6 +1073,7 @@ function renderSettings(){
   $('#setPc').onclick=()=>{const setNew=()=>openPasscode({mode:'set',title:'Новый код-пароль',onOk:c=>{S.passcode=c;save();renderSettings();toast('Код-пароль сохранён')}});if(S.passcode)openPasscode({mode:'check',title:'Текущий код-пароль',onOk:()=>setTimeout(setNew,400)});else setNew()};
   $('#setAe').onclick=()=>{S.animEmoji=!S.animEmoji;save();$('#setAe .sw').classList.toggle('on',S.animEmoji);document.body.classList.toggle('noanim',!S.animEmoji)};
   $('#setArch').onclick=()=>{T.tab='chats';T.archive=true;renderMain()};
+  $('#setSnd').onclick=openSoundCheck;
   $('#setAbout').onclick=()=>openSheet('О мессенджере',`<div class="pf-top"><div style="font-size:54px">💬</div><p class="pf-desc">Переписка, звонки, голосовые и кружочки — между настоящими людьми.<br><br>В каналах часть подписчиков, просмотров, реакций и голосов в опросах добавляют боты-фанаты, чтобы каналы росли живее.</p></div>`);
   $('#setBl').onclick=()=>{const bl=Object.entries(S.users).filter(([,u])=>u.blocked);openSheet('Заблокированные',bl.length?bl.map(([id,u])=>`<div class="chk" data-u="${id}">${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},40)}<div>${esc(u.name)}</div><button class="link" style="margin-left:auto">Разблокировать</button></div>`).join(''):'<div class="empty">Никого нет 🙂</div>',sh=>sh.querySelectorAll('[data-u]').forEach(r=>r.querySelector('button').onclick=()=>{S.users[r.dataset.u].blocked=false;save();r.animate([{opacity:1},{opacity:0,transform:'translateX(40px)'}],{duration:250,fill:'forwards'}).onfinish=()=>r.remove();renderSettings()}))};
   $('#addStk').onclick=()=>pickImage(d=>{S.stickers.push(d);save();renderSettings();toast('Стикер добавлен')},256);
@@ -2423,6 +2429,42 @@ function compressVideo(file,onp){return new Promise((res,rej)=>{
     draw();
   };
 })}
+
+/* ---- Settings → Проверка звука: find out exactly where the sound is lost ---- */
+function openSoundCheck(){
+  const ua=navigator.userAgent;const ios=(ua.match(/OS (\d+)[_.](\d+)/)||[])[0]||'';const standalone=!!(window.navigator.standalone||matchMedia('(display-mode: standalone)').matches);
+  const sess=navigator.audioSession?navigator.audioSession.type:'нет';let ac=null;try{ac=actx()}catch(_){}
+  const R={spk:null,mic:null,peak:null};
+  const body=()=>`<div class="sc">
+    <div class="sc-step"><div class="sc-h">1. Динамик</div><p>Нажмите и послушайте короткий сигнал. Если не слышно — прибавьте громкость кнопками на боку телефона, пока звучит.</p>
+      <button class="btn" id="scSpk">▶ Проиграть сигнал</button>
+      <div class="sc-ans">${R.spk===null?'<button data-y="spk1">Слышно</button><button data-y="spk0">Не слышно</button>':R.spk?'✓ Динамик работает':'✗ Сигнал не слышно'}</div></div>
+    <div class="sc-step"><div class="sc-h">2. Микрофон</div><p>Нажмите и скажите что-нибудь 3 секунды. Потом запись проиграется.</p>
+      <button class="btn" id="scMic">🎤 Записать 3 секунды</button><div class="sc-meter"><i id="scLvl"></i></div><div class="sc-res" id="scMicRes">${R.peak===null?'':`Громкость записи: <b>${R.peak}%</b> ${R.peak<3?'— микрофон записал тишину':R.peak<15?'— очень тихо':'— хорошо'}`}</div>
+      <div class="sc-ans">${R.peak===null?'':R.mic===null?'<button data-y="mic1">Слышу свой голос</button><button data-y="mic0">Не слышу</button>':R.mic?'✓ Запись и воспроизведение работают':'✗ Свой голос не слышно'}</div></div>
+    <div class="sc-step sc-info"><div class="sc-h">Данные для проверки</div>
+      <div>Система: ${esc(ios||(/Android/.test(ua)?'Android':/Mac/.test(ua)?'Mac':'другая'))}${/CriOS|Chrome/.test(ua)?' · Chrome':/Safari/.test(ua)?' · Safari':''}</div>
+      <div>Открыт как приложение: ${standalone?'да':'нет'}</div><div>Режим звука iPhone: ${esc(String(sess))}</div><div>Звуковой движок: ${ac?esc(ac.state):'нет'}</div>
+      <div>Формат записи: ${esc(pickMime()||'по умолчанию')}</div><div>Плееры разблокированы: ${AU_OK?'да':'нет'}</div></div>
+    <p class="hint">Сделайте скриншот этого экрана после обоих шагов и пришлите — по нему видно, где пропадает звук.</p></div>`;
+  openSheet('Проверка звука',`<div id="scWrap">${body()}</div>`,sh=>{
+    const W=sh.querySelector('#scWrap');const redraw=()=>{W.innerHTML=body();bind()};
+    const bind=()=>{
+      W.querySelector('#scSpk').onclick=()=>{aSess('playback');const a=PL.test;a.muted=false;a.volume=1;a.src=wavDataURL(1.2,660,.7);a.currentTime=0;a.play().catch(e=>toast('Телефон не дал включить звук: '+(e&&e.name||'')))};
+      W.querySelectorAll('[data-y]').forEach(b=>b.onclick=()=>{const k=b.dataset.y;if(k.startsWith('spk'))R.spk=k==='spk1';else R.mic=k==='mic1';redraw()});
+      W.querySelector('#scMic').onclick=async()=>{const btn=W.querySelector('#scMic');aSess('auto');let st;
+        try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}catch(e){W.querySelector('#scMicRes').textContent='Нет доступа к микрофону: '+(e&&e.name||'ошибка');return}
+        btn.disabled=true;btn.textContent='Говорите… 3';const mime=pickMime();let rec;try{rec=mime?new MediaRecorder(st,{mimeType:mime}):new MediaRecorder(st)}catch(_){rec=new MediaRecorder(st)}
+        const ch=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)ch.push(e.data)};let an=null,buf=null,mx=0;try{const a2=actx();a2.resume&&a2.resume();const src=a2.createMediaStreamSource(st);an=a2.createAnalyser();an.fftSize=512;src.connect(an);buf=new Uint8Array(512)}catch(_){}
+        const t0=Date.now();const loop=()=>{if(!an||rec.state==='inactive')return;an.getByteTimeDomainData(buf);let p=0;for(let i=0;i<buf.length;i++)p=Math.max(p,Math.abs(buf[i]-128)/128);mx=Math.max(mx,p);const l=W.querySelector('#scLvl');if(l)l.style.width=Math.round(p*100)+'%';btn.textContent='Говорите… '+Math.max(1,3-Math.floor((Date.now()-t0)/1000));requestAnimationFrame(loop)};
+        rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());const raw=new Blob(ch,{type:rec.mimeType||'audio/mp4'});let w=raw;try{w=await toWav(raw,3)}catch(_){}
+          let peak=Math.round(mx*100);try{const ab=await w.arrayBuffer();const ac2=actx();const d=await new Promise((ok,no)=>{const p=ac2.decodeAudioData(ab.slice(0),ok,no);if(p&&p.then)p.then(ok,no)});const x=d.getChannelData(0);let pk=0;for(let i=0;i<x.length;i++)pk=Math.max(pk,Math.abs(x[i]));peak=Math.max(peak,Math.round(pk*100))}catch(_){}
+          R.peak=peak;R.mic=null;setTimeout(()=>aSess('playback'),100);const url=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)});redraw();const a=PL.test;a.src=url;a.currentTime=0;a.muted=false;a.volume=1;a.play().catch(()=>toast('Нажмите «Записать» ещё раз — телефон не дал проиграть запись'))};
+        rec.start();loop();setTimeout(()=>{if(rec.state!=='inactive')rec.stop()},3000)};
+    };bind();
+  });
+}
+
 function openVideoViewer(url,poster){aSess('playback');
   const el=document.createElement('div');el.className='vidview';el.innerHTML=`<video src="${url}" controls autoplay playsinline ${poster?`poster="${poster}"`:''}></video><button class="vx" aria-label="Закрыть">✕</button>`;
   $('#app').appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));const v=el.querySelector('video');try{const p=v.play();p&&p.catch&&p.catch(()=>{})}catch(_){}
@@ -2451,7 +2493,7 @@ async function sendVideo(file,extra){
   if(file.size>max){toast(`Видео слишком большое даже после сжатия: ${(file.size/1048576).toFixed(1)} МБ. Можно до ${max/1048576} МБ — обрежьте его`);return}
   toast(extra&&extra.round?'⭕ Отправляю кружочек…':'🎬 Готовлю видео…');
   const meta=extra&&extra.poster?{dur:extra.dur,poster:extra.poster}:await videoMeta(file);const fid=uid()+uid();
-  const video={fid,dur:Math.round(meta.dur||(extra&&extra.dur)||0),poster:meta.poster,size:file.size,mime:file.type||'video/mp4'};if(extra&&extra.round)video.round=true;
+  const video={fid,dur:Math.round(meta.dur||(extra&&extra.dur)||0),poster:meta.poster,size:file.size,mime:file.type||'video/mp4'};if(extra&&extra.round)video.round=true;if(extra&&extra.aud)video.aud=extra.aud;
   await IDB.put('v:'+fid,file);VURL[fid]=URL.createObjectURL(file);
   if(!c.remote){sendMessage({video,text:''});return}
   // in a shared chat the file goes to the server in pieces, then the message itself
@@ -2476,9 +2518,10 @@ function playVideoIn(el,m,url){aSess('playback');
   el.classList.add('playing');
   if(m.video.round){
     el.innerHTML=`<video src="${url}" playsinline webkit-playsinline preload="auto" ${m.video.poster?`poster="${m.video.poster}"`:''}></video><svg class="rr-ring pl" viewBox="0 0 100 100"><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><span class="vplay rp">▶</span>`;
-    const v=el.querySelector('video'),pr=el.querySelector('.rr-p');
-    const go=()=>{const p=v.play();el.classList.remove('paused');if(p&&p.catch)p.catch(()=>el.classList.add('paused'))};
-    v.muted=false;v.volume=1;
+    const v=el.querySelector('video'),pr=el.querySelector('.rr-p');const A=m.video.aud?PL.round:null;
+    if(A){v.muted=true;A.muted=false;A.volume=1;A.src=m.video.aud;A.currentTime=0}else{v.muted=false;v.volume=1}
+    const go=()=>{aSess('playback');const p=v.play();el.classList.remove('paused');if(p&&p.catch)p.catch(()=>el.classList.add('paused'));if(A){A.currentTime=v.currentTime||0;const q=A.play();if(q&&q.catch)q.catch(()=>{v.pause();el.classList.add('paused')})}};
+    if(A){v.addEventListener('pause',()=>A.pause());v.addEventListener('seeked',()=>{A.currentTime=v.currentTime});v.addEventListener('timeupdate',()=>{if(Math.abs(A.currentTime-v.currentTime)>.3)A.currentTime=v.currentTime});v.addEventListener('ended',()=>A.pause())}
     v.ontimeupdate=()=>{if(v.duration&&isFinite(v.duration))pr.style.strokeDashoffset=String(100-v.currentTime/v.duration*100)};
     v.onpause=()=>el.classList.add('paused');v.onplay=()=>el.classList.remove('paused');
     v.onended=()=>{el.classList.remove('playing','paused');el.onclick=null;el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
@@ -2606,7 +2649,7 @@ function attachRemote(st){
   const upd=()=>ui.classList.toggle('rvid',hasV());upd();st.getVideoTracks().forEach(t=>{t.onunmute=upd;t.onmute=upd;t.onended=upd});
 }
 function showSelf(st){if(!st.getVideoTracks().length)return;const self=$('#clSelf');if(!self)return;const v=document.createElement('video');v.autoplay=true;v.muted=true;v.playsInline=true;v.srcObject=st;self.innerHTML='';self.appendChild(v);$('#callUI').classList.add('vid')}
-async function startRealCall(c,video,fromEl){aSess('play-and-record');
+async function startRealCall(c,video,fromEl){aSess('auto');
   if(c.type!=='private'){toast('Групповые звонки скоро появятся — пока можно звонить один на один');return}
   if(S.users[c.user]?.blocked){toast('Пользователь заблокирован — звонки недоступны');return}
   if(!window.RTCPeerConnection||!navigator.mediaDevices){toast('Этот браузер не умеет звонить. Откройте мессенджер в Safari или Chrome');return}
@@ -2632,7 +2675,7 @@ function incomingRealCall(c,sig,from){
   buildCallUI();ringtone();setCallStatus(sig.video?'Входящий видеозвонок…':'Входящий звонок…');
   CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},45000));
 }
-async function acceptRealCall(){aSess('play-and-record');
+async function acceptRealCall(){aSess('auto');
   const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
   try{
     const st=await getMedia(K.video);if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
@@ -2668,7 +2711,7 @@ const ROUND_MAX=60;
 async function openRoundRecorder(opt){
   opt=opt||{};const c=S.chats[T.openChat];if(!c&&!opt.onDone)return;if(document.querySelector('.rrec'))return;
   if(!navigator.mediaDevices||!window.MediaRecorder){toast('Этот браузер не умеет записывать видео');return}
-  let facing='user';aSess('play-and-record');
+  let facing='user';aSess('auto');
   const el=document.createElement('div');el.className='rrec';
   el.innerHTML=`<div class="rr-c"><svg class="rr-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48"/><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><video autoplay muted playsinline></video></div>
    <div class="rr-t"><span class="rr-dot"></span><span id="rrTime">0:00</span></div>
@@ -2688,17 +2731,21 @@ async function openRoundRecorder(opt){
   const close=()=>{clearInterval(timer);stopAct();st.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150);el.classList.remove('show');setTimeout(()=>el.remove(),300)};
   const grab=()=>{try{const s=Math.min(vid.videoWidth,vid.videoHeight);if(!s)return null;const cv=document.createElement('canvas');cv.width=cv.height=240;cv.getContext('2d').drawImage(vid,(vid.videoWidth-s)/2,(vid.videoHeight-s)/2,s,s,0,0,240,240);return cv.toDataURL('image/jpeg',.7)}catch(_){return null}};
   let poster=null;
-  const start=()=>{chunks=[];try{rec=new MediaRecorder(st,mime?{mimeType:mime,videoBitsPerSecond:700000,audioBitsPerSecond:64000}:{})}catch(_){rec=new MediaRecorder(st)}
+  let arec=null,achunks=[],aDone=Promise.resolve(null);
+  const start=()=>{chunks=[];try{rec=new MediaRecorder(st,mime?{mimeType:mime,videoBitsPerSecond:700000,audioBitsPerSecond:96000}:{})}catch(_){rec=new MediaRecorder(st)}
+    try{const am=pickMime();const as=new MediaStream(st.getAudioTracks());arec=am?new MediaRecorder(as,{mimeType:am}):new MediaRecorder(as);achunks=[];arec.ondataavailable=e=>{if(e.data&&e.data.size)achunks.push(e.data)};
+      aDone=new Promise(res=>{arec.onstop=()=>res(new Blob(achunks,{type:arec.mimeType||'audio/mp4'}));setTimeout(()=>res(null),8000)});arec.start()}catch(_){arec=null}
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
-    rec.onstop=()=>{if(stopped==='cancel')return;const type=(rec.mimeType||mime||'video/mp4').split(';')[0];const blob=new Blob(chunks,{type});const dur=Math.round((Date.now()-t0)/1000);close();
+    rec.onstop=async()=>{if(stopped==='cancel')return;const type=(rec.mimeType||mime||'video/mp4').split(';')[0];const blob=new Blob(chunks,{type});const dur=Math.round((Date.now()-t0)/1000);close();
+      let aud=null;try{const ab=await aDone;if(ab&&ab.size){const w=await toWav(ab,dur);if(w&&w.type==='audio/wav'&&w.size<560000)aud=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)})}}catch(_){}
       if(dur<1){toast('Слишком коротко — удерживайте запись хотя бы секунду');return}
-      const file=new File([blob],'round.'+(type.includes('mp4')?'mp4':'webm'),{type});if(opt.onDone){opt.onDone(file,poster,dur);return}sendVideo(file,{round:true,poster,dur})};
+      const file=new File([blob],'round.'+(type.includes('mp4')?'mp4':'webm'),{type});if(opt.onDone){opt.onDone(file,poster,dur,aud);return}sendVideo(file,{round:true,poster,dur,aud})};
     rec.start();t0=Date.now();if(!opt.onDone)startAct('round');setTimeout(()=>{poster=grab()},400);el.classList.add('on');el.querySelector('.rr-h').textContent='Нажмите ещё раз, чтобы отправить';
     timer=setInterval(()=>{const s=(Date.now()-t0)/1000;el.querySelector('#rrTime').textContent=fmtDur(s);el.querySelector('.rr-p').style.strokeDashoffset=String(100-Math.min(100,s/ROUND_MAX*100));if(s>=ROUND_MAX)stop()},200)};
-  const stop=()=>{if(!rec||rec.state==='inactive')return;clearInterval(timer);rec.stop()};
+  const stop=()=>{if(!rec||rec.state==='inactive')return;clearInterval(timer);try{arec&&arec.state!=='inactive'&&arec.stop()}catch(_){}rec.stop()};
   el.querySelector('.rr-go').onclick=()=>{if(!rec)start();else stop()};
   el.querySelector('.rr-c').onclick=()=>{if(!rec)start();else stop()};
-  el.querySelector('.rr-x').onclick=()=>{stopped='cancel';if(rec&&rec.state!=='inactive')rec.stop();close()};
+  el.querySelector('.rr-x').onclick=()=>{stopped='cancel';try{arec&&arec.state!=='inactive'&&arec.stop()}catch(_){}if(rec&&rec.state!=='inactive')rec.stop();close()};
   el.querySelector('.rr-flip').onclick=async()=>{if(rec){toast('Камеру можно сменить до начала записи');return}facing=facing==='user'?'environment':'user';try{const n=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:480},height:{ideal:480}},audio:true});st.getTracks().forEach(t=>t.stop());st=n;vid.srcObject=st;vid.classList.toggle('back',facing!=='user')}catch(_){toast('Вторая камера недоступна')}};
 }
 function roundHTML(m){const v=m.video;return `<div class="vid round" data-vf="${v.fid}">${v.poster?`<img src="${v.poster}" alt="">`:'<div class="vph"></div>'}<span class="vplay">▶</span><span class="vdur">${fmtDur(v.dur||0)}</span></div>`}
@@ -3092,7 +3139,7 @@ function openStatusComposer(){
     const bm=mbox.querySelector('#bigMic'),mt=mbox.querySelector('#micTxt');let rec=null,st=null,t0=0,tm=0,chunks=[];
     bm.onclick=async()=>{
       if(rec&&rec.state==='recording'){clearInterval(tm);rec.stop();return}
-      aSess('play-and-record');
+      aSess('auto');
       try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){aSess('playback');mt.textContent='Нет доступа к микрофону. Разрешите: Настройки → Safari → Микрофон';return}
       const mime=pickMime();try{rec=mime?new MediaRecorder(st,{mimeType:mime}):new MediaRecorder(st)}catch(_){rec=new MediaRecorder(st)}
       chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};t0=Date.now();
@@ -3103,7 +3150,7 @@ function openStatusComposer(){
         mt.textContent='Сохраняю…';const raw=new Blob(chunks,{type:rec.mimeType||'audio/mp4'});const w=await toWav(raw,dur).catch(()=>raw);
         const src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)});media={kind:'voice',src,dur};
         mbox.innerHTML=`<div class="stc-mic"><div class="stc-mt big">Голосовое · ${fmtDur(dur)}</div><button class="stc-vstop" id="stcListen">▶ Прослушать</button><button class="stc-again" id="stcAgain">Записать заново</button></div>`;
-        const au=new Audio(src),lb=mbox.querySelector('#stcListen');lb.onclick=()=>{aSess('playback');au.volume=1;if(au.paused){au.currentTime=0;au.play().catch(()=>toast('Не удалось включить звук'));lb.textContent='⏸ Пауза'}else{au.pause();lb.textContent='▶ Прослушать'}};au.onended=()=>lb.textContent='▶ Прослушать';
+        const au=PL.test,lb=mbox.querySelector('#stcListen');au.src=src;lb.onclick=()=>{aSess('playback');au.volume=1;if(au.paused){au.currentTime=0;au.play().catch(()=>toast('Не удалось включить звук'));lb.textContent='⏸ Пауза'}else{au.pause();lb.textContent='▶ Прослушать'}};au.onended=()=>lb.textContent='▶ Прослушать';
         mbox.querySelector('#stcAgain').onclick=()=>{au.pause();el.querySelector('[data-k="voice"]').click()}};
       rec.start()};
   };
@@ -3158,7 +3205,7 @@ function openStoryViewer(who,items){
   const show=()=>{if(curMedia){try{curMedia.pause()}catch(_){}curMedia=null}const it=items[i];S.stSeen=S.stSeen||{};if(who!=='me'){S.stSeen[it.id]=1;save()}
     const vid=it.video,big=it.img||(vid&&!vid.round);
     card.style.background=big?'#000':it.bg;card.innerHTML=`${it.img?`<img src="${it.img}" alt="">`:''}${vid?`<div class="sv-vid ${vid.round?'round':''}">${vid.poster?`<img src="${vid.poster}" alt="">`:''}<div class="sv-load">Загружаю…</div></div>`:''}${it.voice?`<div class="sv-voice">${UIC.mic}<span>${fmtDur(it.voice.dur||0)}</span></div>`:''}${it.text?`<div class="sv-txt ${big||vid?'cap':''}">${esc(it.text)}</div>`:''}`;
-    curDur=DUR;if(it.voice){aSess('playback');const a=new Audio(it.voice.src);a.volume=1;curMedia=a;curDur=Math.max(DUR,(it.voice.dur||5)*1000+600);const vv=card.querySelector('.sv-voice');
+    curDur=DUR;if(it.voice){aSess('playback');const a=PL.test;a.onplay=a.onpause=a.onended=null;a.src=it.voice.src;a.currentTime=0;a.muted=false;a.volume=1;curMedia=a;curDur=Math.max(DUR,(it.voice.dur||5)*1000+600);const vv=card.querySelector('.sv-voice');
       vv.innerHTML=`<button class="sv-vbtn">⏸</button><span class="sv-bars2">${'<i></i>'.repeat(18)}</span><span>${fmtDur(it.voice.dur||0)}</span>`;const btn=vv.querySelector('.sv-vbtn');
       const sync=()=>{btn.textContent=a.paused?'▶':'⏸';vv.classList.toggle('playing',!a.paused)};a.onplay=sync;a.onpause=sync;a.onended=sync;
       btn.onclick=e=>{e.stopPropagation();aSess('playback');if(a.paused)a.play().catch(()=>toast('Не удалось включить звук — проверьте громкость'));else a.pause()};
@@ -3775,7 +3822,17 @@ function voiceBubble(m){
   const playing=VP.id===m.id&&!VP.audio.paused;
   return `<div class="bubble voice ${v.heard||m.from==='me'?'':'unheard'}" data-v="${m.id}"><button class="vplay">${playing?VI.pause:VI.play}</button><div class="vmid"><div class="vwave">${w.map(x=>`<i style="height:${Math.round(3+x*21)}px"></i>`).join('')}</div><div class="vinfo"><span class="vtime">${fmtDur(v.dur||0)}</span><button class="vspd">${VP.speed}x</button></div></div>`;
 }
-const VP={audio:new Audio(),id:null,speed:1,raf:0};
+function wavDataURL(sec,freq,vol){const rate=22050,n=Math.round(rate*sec),W=new ArrayBuffer(44+n*2),v=new DataView(W),ws=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const env=Math.min(1,i/400,(n-i)/400);v.setInt16(44+i*2,freq?Math.round(Math.sin(2*Math.PI*freq*i/rate)*(vol||.6)*env*32767):0,true)}
+  let b='';const u=new Uint8Array(W);for(let i=0;i<u.length;i+=8192)b+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return 'data:audio/wav;base64,'+btoa(b)}
+const SILENT_WAV=wavDataURL(.12,0);
+function mkPlayer(id){const a=document.createElement('audio');a.id=id;a.setAttribute('playsinline','');a.setAttribute('webkit-playsinline','');a.preload='auto';a.style.display='none';document.body.appendChild(a);return a}
+const PL={voice:mkPlayer('aVoice'),round:mkPlayer('aRound'),test:mkPlayer('aTest')};
+let AU_OK=false;
+function unlockAudio(){if(AU_OK)return;AU_OK=true;aSess('playback');Object.values(PL).forEach(a=>{if(a.src&&!a.paused)return;a.muted=false;a.volume=1;a.src=SILENT_WAV;const p=a.play();if(p&&p.then)p.then(()=>{a.pause();a.currentTime=0}).catch(()=>{AU_OK=false})});try{const ac=actx();ac&&ac.state==='suspended'&&ac.resume()}catch(_){}}
+['touchend','click','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{capture:true,passive:true}));
+const VP={audio:PL.voice,id:null,speed:1,raf:0};
 VP.audio.preload='auto';
 function voiceEl(id){return document.querySelector(`#msgs .bubble.voice[data-v="${id}"]`)}
 function paintVoice(){
@@ -3838,7 +3895,7 @@ function bindMic(btn){
   btn.addEventListener('contextmenu',e=>e.preventDefault());
 }
 function startRec(){
-  if(REC)return;aSess('play-and-record');
+  if(REC)return;aSess('auto');
   REC={chunks:[],samples:[],t0:0,dx:0};
   if(!micSupported()){REC.failed=true;REC.why='unsupported';return}
   const R=REC;
@@ -3881,7 +3938,7 @@ function toWav(blob,dur){return new Promise(async(res,rej)=>{try{
   // mix to mono and resample in plain JavaScript (works the same on every phone)
   const chs=[];for(let c=0;c<buf.numberOfChannels;c++)chs.push(buf.getChannelData(c));
   const srcLen=chs[0].length,ratio=buf.sampleRate/rate,len=Math.max(1,Math.floor(srcLen/ratio));const d=new Float32Array(len);
-  for(let i=0;i<len;i++){const p=i*ratio,a=Math.floor(p),f=p-a;let s1=0,s2=0;for(const ch of chs){s1+=ch[a]||0;s2+=ch[Math.min(srcLen-1,a+1)]||0}d[i]=(s1*(1-f)+s2*f)/chs.length}let peak=0;for(let i=0;i<d.length;i++)peak=Math.max(peak,Math.abs(d[i]));const g=peak>0?Math.min(4,.9/peak):1;
+  for(let i=0;i<len;i++){const p=i*ratio,a=Math.floor(p),f=p-a;let s1=0,s2=0;for(const ch of chs){s1+=ch[a]||0;s2+=ch[Math.min(srcLen-1,a+1)]||0}d[i]=(s1*(1-f)+s2*f)/chs.length}let peak=0;for(let i=0;i<d.length;i++)peak=Math.max(peak,Math.abs(d[i]));const g=peak>0?Math.min(8,.92/peak):1;
   const bits=dur>40?8:16;const bps=bits/8;const W=new ArrayBuffer(44+d.length*bps);const v=new DataView(W);const ws=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
   ws(0,'RIFF');v.setUint32(4,36+d.length*bps,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*bps,true);v.setUint16(32,bps,true);v.setUint16(34,bits,true);ws(36,'data');v.setUint32(40,d.length*bps,true);
   for(let i=0;i<d.length;i++){const x=Math.max(-1,Math.min(1,d[i]*g));if(bits===16)v.setInt16(44+i*2,x<0?x*32768:x*32767,true);else v.setUint8(44+i,Math.round((x+1)*127.5))}
