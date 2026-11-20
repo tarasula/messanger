@@ -758,6 +758,10 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 .teyes{display:inline-flex;gap:3px;margin-left:6px;vertical-align:-1px}.teyes i{position:relative;width:9px;height:10px;border-radius:50%;border:1.6px solid currentColor;background:transparent}.teyes i::after{content:'';position:absolute;top:3px;left:2px;width:3.5px;height:3.5px;border-radius:50%;background:currentColor;animation:teye 1.6s ease-in-out infinite}
 @keyframes teye{0%,100%{transform:translate(-1px,0)}30%{transform:translate(2.5px,-1px)}60%{transform:translate(1px,1.5px)}}
 .cooldown{display:block;width:100%;text-align:center;color:#8e8e93;font-size:16px;padding:12px 0;font-variant-numeric:tabular-nums}
+.sv-voice{z-index:4}.sv-vbtn{width:52px;height:52px;border-radius:50%;border:0;background:#fff;color:#000;font-size:22px;flex-shrink:0}
+.sv-bars2{display:flex;align-items:center;gap:3px;height:34px}.sv-bars2 i{width:4px;height:8px;border-radius:2px;background:#fff;opacity:.8}
+.sv-voice.playing .sv-bars2 i{animation:svb .6s ease-in-out infinite alternate}.sv-bars2 i:nth-child(3n){animation-delay:.2s}.sv-bars2 i:nth-child(3n+1){animation-delay:.4s}
+@keyframes svb{to{height:30px}}
 </style>
 </head>
 <body>
@@ -3057,7 +3061,7 @@ function openStatusComposer(){
   const el=document.createElement('div');el.className='stcomp';
   el.innerHTML=`<div class="stc-top"><button class="stc-x" aria-label="Закрыть">${UIC.x}</button><span>Новый статус</span><span style="width:38px"></span></div>
    <div class="stc-card" style="background:${ST_BGS[0]}"><div class="stc-media"></div><textarea maxlength="300" placeholder="Напишите статус…"></textarea></div>
-   <div class="stc-kinds"><button data-k="photo">${UIC.camera}<span>Фото</span></button><button data-k="voice">${UIC.mic}<span>Голос</span></button><button data-k="text" class="on">${UIC.edit}<span>Текст</span></button></div>
+   <div class="stc-kinds"><button data-k="photo">${UIC.camera}<span>Фото</span></button><button data-k="voice">${UIC.mic}<span>Голосовое</span></button><button data-k="text" class="on">${UIC.edit}<span>Текст</span></button></div>
    <div class="stc-bgs">${ST_BGS.map((b,i)=>`<button data-b="${i}" class="${i?'':'on'}" style="background:${b}"></button>`).join('')}</div>
    <button class="btn stc-go">Опубликовать</button>`;
   $('#app').appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));
@@ -3076,15 +3080,15 @@ function openStatusComposer(){
           clearMedia();media={kind:'video',blob:r.blob,poster:r.poster,dur:r.dur,mime:r.type};card.style.background='#000';card.classList.add('photo');ta.placeholder='Подпись…';
           mbox.innerHTML=`<video src="${URL.createObjectURL(r.blob)}" autoplay muted loop playsinline></video>`;setKind('video')}).catch(()=>{mbox.innerHTML='<div class="stc-prep">Не получилось подготовить это видео</div>'})}};f.click()});
   el.querySelector('[data-k="voice"]').onclick=async()=>{clearMedia();setKind('voice');
-    let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){toast('Разрешите доступ к микрофону');return}
+    aSess('play-and-record');let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){aSess('playback');toast('Разрешите доступ к микрофону');return}
     const mime=pickMime();let rec;try{rec=mime?new MediaRecorder(st,{mimeType:mime}):new MediaRecorder(st)}catch(_){rec=new MediaRecorder(st)}
     const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};const t0=Date.now();
     mbox.innerHTML=`<div class="stc-voice"><span class="rdot"></span><span class="stc-vt">0:00</span><button class="stc-vstop">Готово</button></div>`;
     const tm=setInterval(()=>{const t=(Date.now()-t0)/1000;const e=mbox.querySelector('.stc-vt');if(e)e.textContent=fmtDur(t);if(t>=60)stop()},250);
     const stop=()=>{if(rec.state==='inactive')return;clearInterval(tm);rec.stop()};
-    rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());const dur=(Date.now()-t0)/1000;if(dur<1){mbox.innerHTML='';toast('Слишком коротко');return}
+    rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150);const dur=(Date.now()-t0)/1000;if(dur<1){mbox.innerHTML='';toast('Слишком коротко');return}
       const raw=new Blob(chunks,{type:rec.mimeType||'audio/mp4'});const w=await toWav(raw,dur).catch(()=>raw);const src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)});
-      media={kind:'voice',src,dur};mbox.innerHTML=`<div class="stc-voice">${UIC.mic}<span>Голосовое · ${fmtDur(dur)}</span><audio src="${src}" controls></audio></div>`};
+      media={kind:'voice',src,dur};mbox.innerHTML=`<div class="stc-voice">${UIC.mic}<span>Голосовое · ${fmtDur(dur)}</span><button class="stc-vstop" id="stcListen">▶ Прослушать</button></div>`;const lb=mbox.querySelector('#stcListen');const au=new Audio(src);lb.onclick=()=>{aSess('playback');au.volume=1;if(au.paused){au.currentTime=0;au.play().catch(()=>toast('Не удалось включить звук'));lb.textContent='⏸ Пауза'}else{au.pause();lb.textContent='▶ Прослушать'}};au.onended=()=>lb.textContent='▶ Прослушать'};
     mbox.querySelector('.stc-vstop').onclick=stop;rec.start()};
   if(el.querySelector('[data-k="round"]'))el.querySelector('[data-k="round"]').onclick=()=>openRoundRecorder({onDone:(file,poster,dur)=>{clearMedia();media={kind:'round',blob:file,poster,dur,mime:file.type};card.style.background=ST_BGS[bg];mbox.innerHTML=`<video class="stc-round" src="${URL.createObjectURL(file)}" autoplay muted loop playsinline></video>`;setKind('round')}});
   go.onclick=async()=>{const text=ta.value.trim();if(!text&&!img&&!media){toast('Напишите текст или добавьте фото, видео, голос или кружок');return}
@@ -3137,7 +3141,11 @@ function openStoryViewer(who,items){
   const show=()=>{if(curMedia){try{curMedia.pause()}catch(_){}curMedia=null}const it=items[i];S.stSeen=S.stSeen||{};if(who!=='me'){S.stSeen[it.id]=1;save()}
     const vid=it.video,big=it.img||(vid&&!vid.round);
     card.style.background=big?'#000':it.bg;card.innerHTML=`${it.img?`<img src="${it.img}" alt="">`:''}${vid?`<div class="sv-vid ${vid.round?'round':''}">${vid.poster?`<img src="${vid.poster}" alt="">`:''}<div class="sv-load">Загружаю…</div></div>`:''}${it.voice?`<div class="sv-voice">${UIC.mic}<span>${fmtDur(it.voice.dur||0)}</span></div>`:''}${it.text?`<div class="sv-txt ${big||vid?'cap':''}">${esc(it.text)}</div>`:''}`;
-    curDur=DUR;if(it.voice){const a=new Audio(it.voice.src);curMedia=a;curDur=Math.max(DUR,(it.voice.dur||5)*1000+400);a.play().catch(()=>{const vv=card.querySelector('.sv-voice');if(vv){vv.classList.add('tap');vv.onclick=e=>{e.stopPropagation();a.play();vv.classList.remove('tap')}}})}
+    curDur=DUR;if(it.voice){aSess('playback');const a=new Audio(it.voice.src);a.volume=1;curMedia=a;curDur=Math.max(DUR,(it.voice.dur||5)*1000+600);const vv=card.querySelector('.sv-voice');
+      vv.innerHTML=`<button class="sv-vbtn">⏸</button><span class="sv-bars2">${'<i></i>'.repeat(18)}</span><span>${fmtDur(it.voice.dur||0)}</span>`;const btn=vv.querySelector('.sv-vbtn');
+      const sync=()=>{btn.textContent=a.paused?'▶':'⏸';vv.classList.toggle('playing',!a.paused)};a.onplay=sync;a.onpause=sync;a.onended=sync;
+      btn.onclick=e=>{e.stopPropagation();aSess('playback');if(a.paused)a.play().catch(()=>toast('Не удалось включить звук — проверьте громкость'));else a.pause()};
+      a.play().then(sync).catch(()=>{sync();vv.classList.add('tap')})}
     if(vid){curDur=Math.max(DUR,(vid.dur||5)*1000+600);const box=card.querySelector('.sv-vid');statusVideoURL(who==='me'?RT.uid:who,vid).then(u=>{if(!u||!box.isConnected){const l=box.querySelector('.sv-load');if(l)l.textContent='Видео не загрузилось';return}
       box.innerHTML=`<video src="${u}" autoplay playsinline ${vid.poster?`poster="${vid.poster}"`:''}></video>`;const v=box.querySelector('video');curMedia=v;v.play().catch(()=>{v.muted=true;v.play().catch(()=>{});const b=document.createElement('button');b.className='sv-snd';b.innerHTML=UIC.speaker+' Включить звук';box.appendChild(b);b.onclick=e=>{e.stopPropagation();v.muted=false;v.play();b.remove()}});acc=0;t0=performance.now()})}
     card.animate([{opacity:.4,transform:'scale(.98)'},{opacity:1,transform:'none'}],{duration:260,easing:'cubic-bezier(.32,.72,0,1)'});
