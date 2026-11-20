@@ -798,7 +798,7 @@ function renderChatList(quiet){
     ct.innerHTML=`<div class="tabpane">${html}</div>`;
   }else{
     const list=Object.values(S.chats).filter(c=>visibleInList(c)&&inFolder(c,T.folder)).sort(sortChats);
-    html=list.length?list.map(chatItemHTML).join('')+(REAL?suggestChannels():''):`<div class="onb"><div class="onb-ic">💬</div><b>Здесь пока пусто</b><p>${REAL?'Найдите друга по @нику в поиске и напишите ему. Или подпишитесь на каналы ниже.':'Нажмите ✏️ справа вверху, чтобы добавить контакт, создать группу или свой канал.'}</p><button class="btn" id="onbGo">Начать</button></div>${suggestChannels()}`;
+    html=list.length?list.map(chatItemHTML).join(''):`<div class="onb"><div class="onb-ic">💬</div><b>Здесь пока пусто</b><p>${REAL?'Найдите друга по @нику или канал по названию в поиске сверху.':'Нажмите ✏️ справа вверху, чтобы добавить контакт, создать группу или свой канал.'}</p><button class="btn" id="onbGo">Начать</button></div>`;
     ct.innerHTML=`<div class="tabpane"><div class="pullzone" id="pullZone"><div class="pullring">${PULL_SVG}</div><div class="pulltxt">Потяните вниз — архив</div></div><div class="listwrap" id="listwrap">${html}</div></div>`;
   }
   bindListItems(ct);
