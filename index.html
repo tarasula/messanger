@@ -2495,6 +2495,7 @@ const RT={uid:null,me:null,ready:false,chatUnsub:null,meUnsub:null,msgUnsubs:{},
 const FBX=()=>window.FB;
 function rid(c){return c&&c.remote?c.rid:null}
 function colorFor(id){return COLORS[hash32(String(id))%COLORS.length]}
+function inApp(){const u=navigator.userAgent||'';return /FBAN|FBAV|Instagram|WhatsApp|Telegram|Line\/|wv\)|; wv/.test(u)}
 function fbErr(e){const c=(e&&e.code)||'';const map={'auth/invalid-email':'Неверный адрес почты','auth/missing-password':'Введите пароль','auth/weak-password':'Пароль слишком простой — минимум 6 символов','auth/email-already-in-use':'Эта почта уже зарегистрирована — войдите','auth/invalid-credential':'Неверная почта или пароль','auth/wrong-password':'Неверный пароль','auth/user-not-found':'Такого аккаунта нет','auth/too-many-requests':'Слишком много попыток, попробуйте позже','auth/popup-closed-by-user':'Окно входа закрыто','auth/network-request-failed':'Нет интернета','permission-denied':'Нет доступа — проверьте правила Firebase','unavailable':'Сервер недоступен, проверьте интернет'};return map[c]||('Ошибка: '+(e&&e.message||c||'неизвестно'))}
 
 /* ---------- auth screens ---------- */
@@ -2523,7 +2524,13 @@ function showAuth(mode){
     const b=el.querySelector('#auGo');b.disabled=true;b.textContent='Подождите…';
     try{if(mode==='login')await F.signInWithEmailAndPassword(F.auth,em,pw);else await F.createUserWithEmailAndPassword(F.auth,em,pw)}catch(e){err(fbErr(e));b.disabled=false;b.textContent=mode==='login'?'Войти':'Создать аккаунт'}};
   el.querySelector('#auGo').onclick=go;el.querySelector('#auPass').onkeydown=e=>{if(e.key==='Enter')go()};
-  el.querySelector('#auG').onclick=async()=>{const p=new F.GoogleAuthProvider();try{await F.signInWithPopup(F.auth,p)}catch(e){if(/popup-blocked|operation-not-supported|cancelled-popup/.test(e.code||'')){try{await F.signInWithRedirect(F.auth,p)}catch(e2){err(fbErr(e2))}}else err(fbErr(e))}};
+  el.querySelector('#auG').onclick=async()=>{const p=new F.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});
+    // pop-up only: the redirect way breaks in Safari (the sign-in page lives on another domain and Safari keeps their storage apart)
+    try{await F.signInWithPopup(F.auth,p)}catch(e){const c=(e&&e.code)||'';
+      if(/popup-closed-by-user|cancelled-popup-request/.test(c))return;
+      if(/popup-blocked/.test(c)){err('Safari заблокировал окно входа. Нажмите «Войти через Google» ещё раз или войдите по почте.');return}
+      if(/operation-not-supported|web-storage-unsupported|internal-error|network-request-failed/.test(c)){err(inApp()?'Откройте мессенджер в Safari: в этом браузере вход через Google не работает. Или войдите по почте.':'Вход через Google здесь не сработал. Откройте мессенджер в Safari или войдите по почте.');return}
+      err(fbErr(e))}};
   el.querySelector('#auF')?.addEventListener('click',async()=>{const em=el.querySelector('#auEmail').value.trim();if(!em){err('Сначала введите почту');return}try{await F.sendPasswordResetEmail(F.auth,em);err('Письмо для сброса пароля отправлено ✉️')}catch(e){err(fbErr(e))}});
 }
 function showProfileSetup(u,prev){
@@ -2558,7 +2565,7 @@ function showProfileSetup(u,prev){
 /* ---------- start / stop ---------- */
 function startRemote(){
   const F=FBX();if(!F||F.err){showAuthErrorBox();return}
-  try{F.getRedirectResult(F.auth).catch(()=>{})}catch(_){}
+  try{F.getRedirectResult(F.auth).catch(()=>{})}catch(_){} // finishes any sign-in started by an older version
   F.onAuthStateChanged(F.auth,async u=>{
     if(!u){stopRemote(true);showAuth();return}
     if(RT.uid&&RT.uid!==u.uid)stopRemote(true);
