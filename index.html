@@ -622,6 +622,17 @@ input[type=datetime-local]{color-scheme:dark}
 .r.mi{cursor:default}.mi-ic{width:26px;display:flex;justify-content:center;color:var(--tx2)}
 .mi-b{flex:1;display:flex;flex-direction:column;align-items:flex-start}.mi-t{color:var(--tx2);font-size:13px;white-space:nowrap}
 .mi-prev .bubble{background:var(--out)!important;color:#000}.mi-prev .bubble .meta{color:#5a8f4e}
+.cl-meters{position:absolute;left:24px;right:24px;bottom:calc(150px + env(safe-area-inset-bottom));z-index:4;display:flex;flex-direction:column;gap:6px;color:rgba(255,255,255,.85);font-size:12px}
+.cl-meters div{display:flex;align-items:center;gap:10px}.cl-meters span{width:120px}.cl-meters b{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}.cl-meters i{display:block;height:100%;width:4%;background:#34c759;border-radius:3px;transition:width .08s}
+.recbar .rx{border:0;background:rgba(255,59,48,.12);color:#ff3b30;width:30px;height:30px;border-radius:50%;font-size:14px;margin-right:4px;flex-shrink:0}
+#micBtn,#rndBtn,#sendBtn{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#micBtn.locked{background:var(--ac);color:#fff}
+.vidview{position:absolute;inset:0;z-index:320;background:#000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
+.vidview.show{opacity:1}.vidview video{width:100%;height:100%;object-fit:contain;background:#000}
+.vidview .vx{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;z-index:2;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:18px}
+.vbusy{position:absolute;inset:0;z-index:330;background:rgba(0,0,0,.72);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;font-size:16px;text-align:center;padding:20px}
+.vbusy .pb{width:70%;height:6px;border-radius:3px;background:rgba(255,255,255,.2);overflow:hidden}.vbusy .pb i{display:block;height:100%;width:0;background:#34c759;transition:width .3s}
+.vbusy button{border:0;border-radius:18px;padding:10px 20px;background:#fff;color:#000;font:inherit;font-weight:600}
 </style>
 </head>
 <body>
@@ -1169,7 +1180,7 @@ function renderChatBottom(){
   ta.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!('ontouchstart' in window)){e.preventDefault();doSend()}if(e.key==='Escape')clearReply()};
   ta.onfocus=()=>{$('#panel').classList.remove('open');$('#emBtn').classList.remove('on')};
   $('#spBtn').onclick=()=>{T.spoilerSend=!T.spoilerSend;$('#spBtn').classList.toggle('on',T.spoilerSend);toast(T.spoilerSend?'Сообщение будет скрыто ✨':'Скрытие выключено')};
-  $('#rndBtn')?.addEventListener('click',()=>{$('#panel').classList.remove('open');openRoundRecorder()});
+  const rb=$('#rndBtn');if(rb){rb.addEventListener('pointerdown',e=>e.preventDefault());rb.addEventListener('click',()=>{$('#panel').classList.remove('open');ta.blur();openRoundRecorder()})}
   $('#emBtn').onclick=()=>{const p=$('#panel');const o=!p.classList.contains('open');if(o){renderPanel();ta.blur()}p.classList.toggle('open',o);$('#emBtn').classList.toggle('on',o);setTimeout(scrollBottom,300)};
   $('#attBtn').onclick=()=>openAttach();
   $('#pollBtn')?.addEventListener('click',openPollCreator);
@@ -2201,17 +2212,56 @@ function openMedia(c,tab){
   const emptyM=(i,t)=>`<div class="pf-top"><div style="font-size:50px">${i}</div><p class="pf-desc">${t}</p></div>`;
   openSheet('Медиа, ссылки и документы',`<div id="mWrap">${body()}</div>`,sh=>{
     sh.onclick=e=>{const tb=e.target.closest('[data-tab]');if(tb){tab=tb.dataset.tab;sh.querySelector('#mWrap').innerHTML=body();return}
-      const cell=e.target.closest('.mcell');if(cell){const m=c.messages.find(x=>x.id===cell.dataset.m);if(!m)return;if(m.img)viewImage(m.img);else{closePopups();setTimeout(()=>{if(T.openChat!==c.id)openChat(c.id);setTimeout(()=>jumpTo(m.id),420)},340)}}};
+      const cell=e.target.closest('.mcell');if(cell){const m=c.messages.find(x=>x.id===cell.dataset.m);if(!m)return;if(m.img)viewImage(m.img);else if(m.video&&!m.video.round){videoURL(m.video).then(u=>{if(u)openVideoViewer(u,m.video.poster);else toast('Видео ещё загружается')})}else{closePopups();setTimeout(()=>{if(T.openChat!==c.id)openChat(c.id);setTimeout(()=>jumpTo(m.id),420)},340)}}};
   });
 }
 function viewImage(src){const v=document.createElement('div');v.className='imgview';v.innerHTML=`<img src="${src}"><button>✕</button>`;$('#app').appendChild(v);requestAnimationFrame(()=>v.classList.add('show'));v.onclick=()=>{v.classList.remove('show');setTimeout(()=>v.remove(),250)}}
 
 /* ---------- video ---------- */
 const VURL={},RT_PARTS={};
-const VMAX_LOCAL=25*1024*1024,VMAX_REMOTE=8*1024*1024,CHUNK=700000;
+const VMAX_LOCAL=40*1024*1024,VMAX_REMOTE=20*1024*1024,CHUNK=700000;
+function vMime(){return ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp8,opus','video/webm'].find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(_){return false}})||''}
+function compressVideo(file,onp){return new Promise((res,rej)=>{
+  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){rej(new Error('nosupport'));return}
+  const url=URL.createObjectURL(file);const v=document.createElement('video');v.src=url;v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';v.muted=false;
+  let done=false;const fail=e=>{if(done)return;done=true;try{v.pause()}catch(_){}URL.revokeObjectURL(url);rej(e)};
+  setTimeout(()=>{if(!v.videoWidth)fail(new Error('timeout'))},15000);
+  v.onerror=()=>fail(new Error('decode'));
+  v.onloadedmetadata=async()=>{
+    const dur=v.duration;if(!isFinite(dur)||dur<=0){fail(new Error('dur'));return}if(dur>180){fail(new Error('long'));return}
+    const k=Math.min(1,640/Math.max(v.videoWidth,v.videoHeight));const w=Math.round(v.videoWidth*k/2)*2,h=Math.round(v.videoHeight*k/2)*2;
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;const x=cv.getContext('2d');
+    const out=cv.captureStream(30);
+    try{const ac=actx();ac.resume&&ac.resume();const src=ac.createMediaElementSource(v);const dst=ac.createMediaStreamDestination();src.connect(dst);dst.stream.getAudioTracks().forEach(t=>out.addTrack(t))}catch(_){}
+    const mime=vMime();let rec;try{rec=new MediaRecorder(out,mime?{mimeType:mime,videoBitsPerSecond:1100000,audioBitsPerSecond:80000}:{})}catch(e){fail(e);return}
+    const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    let poster=null;
+    rec.onstop=()=>{if(done)return;done=true;URL.revokeObjectURL(url);const type=(rec.mimeType||mime||'video/mp4').split(';')[0];res({blob:new Blob(chunks,{type}),dur,poster,type})};
+    const draw=()=>{if(done)return;try{x.drawImage(v,0,0,w,h)}catch(_){}if(!poster&&v.currentTime>.3){try{const pc=document.createElement('canvas');const pk=Math.min(1,320/Math.max(w,h));pc.width=w*pk;pc.height=h*pk;pc.getContext('2d').drawImage(cv,0,0,pc.width,pc.height);poster=pc.toDataURL('image/jpeg',.7)}catch(_){}}
+      onp&&onp(Math.min(1,v.currentTime/dur));if(!v.ended)(v.requestVideoFrameCallback?v.requestVideoFrameCallback(draw):requestAnimationFrame(draw))};
+    v.onended=()=>{setTimeout(()=>{try{rec.state!=='inactive'&&rec.stop()}catch(_){}},150)};
+    try{x.drawImage(v,0,0,w,h)}catch(_){}
+    rec.start(1000);
+    try{await v.play()}catch(e){fail(new Error('play'));return}
+    draw();
+  };
+})}
+function openVideoViewer(url,poster){
+  const el=document.createElement('div');el.className='vidview';el.innerHTML=`<video src="${url}" controls autoplay playsinline ${poster?`poster="${poster}"`:''}></video><button class="vx" aria-label="Закрыть">✕</button>`;
+  $('#app').appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));const v=el.querySelector('video');try{const p=v.play();p&&p.catch&&p.catch(()=>{})}catch(_){}
+  el.querySelector('.vx').onclick=()=>{v.pause();el.classList.remove('show');setTimeout(()=>el.remove(),250)};
+}
 function pickVideo(){
   let f=$('#vidPick');if(!f){f=document.createElement('input');f.type='file';f.accept='video/*';f.id='vidPick';f.hidden=true;document.body.appendChild(f)}
-  f.value='';f.onchange=()=>{const file=f.files[0];if(file)sendVideo(file)};f.click();
+  f.value='';f.onchange=()=>{const file=f.files[0];if(!file)return;
+    // shrinking plays the video once, which needs a tap, so ask first
+    const box=document.createElement('div');box.className='vbusy';box.innerHTML=`<div style="font-size:40px">🎬</div><div>${esc(file.name||'Видео')} · ${(file.size/1048576).toFixed(1)} МБ</div><button id="vGo">Отправить видео</button><button id="vNo" style="background:rgba(255,255,255,.18);color:#fff">Отмена</button>`;$('#app').appendChild(box);
+    box.querySelector('#vNo').onclick=()=>box.remove();
+    box.querySelector('#vGo').onclick=()=>{actx();box.innerHTML='<div>Сжимаю видео… <span id="vPct">0%</span></div><div class="pb"><i></i></div><div style="font-size:13px;opacity:.7">Не закрывайте экран</div>';
+      compressVideo(file,p=>{const i=box.querySelector('.pb i');if(i)i.style.width=Math.round(p*100)+'%';const t=box.querySelector('#vPct');if(t)t.textContent=Math.round(p*100)+'%'})
+      .then(r=>{box.remove();const out=new File([r.blob],'video.'+(r.type.includes('mp4')?'mp4':'webm'),{type:r.type});sendVideo(out,{poster:r.poster,dur:r.dur})})
+      .catch(e=>{box.remove();if(e&&e.message==='long'){toast('Видео длиннее 3 минут — обрежьте его и попробуйте снова');return}sendVideo(file)})};
+  };f.click();
 }
 function videoMeta(file){return new Promise(res=>{const url=URL.createObjectURL(file);const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='metadata';v.src=url;let done=false;
   const fin=(poster)=>{if(done)return;done=true;const dur=isFinite(v.duration)?v.duration:0;URL.revokeObjectURL(url);res({dur,poster})};
@@ -2221,7 +2271,7 @@ function videoMeta(file){return new Promise(res=>{const url=URL.createObjectURL(
 async function sendVideo(file,extra){
   const c=S.chats[T.openChat];if(!c)return;
   const max=c.remote?VMAX_REMOTE:VMAX_LOCAL;
-  if(file.size>max){toast(`Видео слишком большое: ${(file.size/1048576).toFixed(1)} МБ. Можно до ${max/1048576} МБ`);return}
+  if(file.size>max){toast(`Видео слишком большое даже после сжатия: ${(file.size/1048576).toFixed(1)} МБ. Можно до ${max/1048576} МБ — обрежьте его`);return}
   toast(extra&&extra.round?'⭕ Отправляю кружочек…':'🎬 Готовлю видео…');
   const meta=extra&&extra.poster?{dur:extra.dur,poster:extra.poster}:await videoMeta(file);const fid=uid()+uid();
   const video={fid,dur:Math.round(meta.dur||(extra&&extra.dur)||0),poster:meta.poster,size:file.size,mime:file.type||'video/mp4'};if(extra&&extra.round)video.round=true;
@@ -2257,8 +2307,7 @@ function playVideoIn(el,m,url){
     v.onerror=()=>{toast('Не получилось включить кружочек на этом устройстве');el.classList.remove('playing','paused');el.onclick=null;el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
     el.onclick=ev=>{ev.stopPropagation();if(v.paused)go();else v.pause()};
     go();return}
-  el.innerHTML=`<video src="${url}" controls playsinline webkit-playsinline ${m.video.poster?`poster="${m.video.poster}"`:''}></video>`;
-  const v=el.querySelector('video');const p=v.play();if(p&&p.catch)p.catch(()=>{});
+  el.classList.remove('playing');openVideoViewer(url,m.video.poster);
 }
 function prefetchVideos(c){if(!c)return;c.messages.slice(-40).forEach(m=>{if(m.video&&!VURL[m.video.fid])videoURL(m.video).catch(()=>{})})}
 document.addEventListener('click',e=>{const el=e.target.closest('.vid');if(!el||el.classList.contains('playing'))return;
@@ -2347,7 +2396,11 @@ function handleExtra(sh,c){sh.addEventListener('click',e=>{const x=e.target.clos
 /* ===== real calls between people (WebRTC; signalling travels as hidden messages of the chat) ===== */
 const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}];
 function whenConnected(pc,ms){return new Promise(res=>{const ok=()=>['connected','completed'].includes(pc.iceConnectionState)||pc.connectionState==='connected';if(ok())return res(true);const t=setTimeout(()=>res(false),ms);const f=()=>{if(ok()){clearTimeout(t);res(true)}else if(pc.iceConnectionState==='failed'||pc.connectionState==='failed'){clearTimeout(t);res(false)}};pc.addEventListener('iceconnectionstatechange',f);pc.addEventListener('connectionstatechange',f)})}
-async function goLive(K){setCallStatus('Соединение…');const ok=await whenConnected(K.pc,20000);if(CALL!==K)return;if(!ok){toast('Звонок не соединился: сеть не пропускает звук. Попробуйте через Wi-Fi');endCall(K.dir==='out'?'cancelled':'declined');return}connectCall();const v=$('#clRemote');if(v&&v.paused)tapForSound(v)}
+async function goLive(K){setCallStatus('Соединение…');const ok=await whenConnected(K.pc,20000);if(CALL!==K)return;if(!ok){toast('Звонок не соединился: сеть не пропускает звук. Попробуйте через Wi-Fi');endCall(K.dir==='out'?'cancelled':'declined');return}connectCall();const a=$('#clAudio');if(a&&a.paused)tapForSound(a);if(K.local)meter(K.local,'clML')}
+function meter(st,id){const ui=$('#callUI');if(!ui||!st.getAudioTracks().length)return;let box=ui.querySelector('.cl-meters');if(!box){box=document.createElement('div');box.className='cl-meters';box.innerHTML='<div><span>🎤 Ваш микрофон</span><b id="clML"><i></i></b></div><div><span>🔊 Собеседник</span><b id="clRL"><i></i></b></div>';ui.appendChild(box)}
+  const ac=actx();if(!ac)return;try{ac.resume&&ac.resume()}catch(_){}let an;try{const src=ac.createMediaStreamSource(st);an=ac.createAnalyser();an.fftSize=256;src.connect(an)}catch(_){return}
+  const buf=new Uint8Array(an.fftSize);const bar=()=>ui.querySelector('#'+id+' i');
+  const loop=()=>{if(!ui.isConnected)return;an.getByteTimeDomainData(buf);let s2=0;for(let i=0;i<buf.length;i++){const x=(buf[i]-128)/128;s2+=x*x}const l=Math.min(1,Math.sqrt(s2/buf.length)*5);const b=bar();if(b)b.style.width=Math.round(4+l*96)+'%';requestAnimationFrame(loop)};loop()}
 function tapForSound(v){const p=v.play();if(p&&p.catch)p.catch(()=>{const ui=$('#callUI');if(!ui||ui.querySelector('.cl-snd'))return;const b=document.createElement('button');b.className='cl-snd';b.textContent='🔊 Нажмите, чтобы включить звук';ui.appendChild(b);b.onclick=()=>{v.muted=false;v.play().then(()=>b.remove()).catch(()=>{})}})}
 const RTCX={seen:new Set()};
 function sigSend(c,d){try{const F=FBX();return F.setDoc(F.doc(F.collection(F.db,'chats',c.rid,'messages')),{from:RT.uid,time:Date.now(),sig:d}).then(r=>r,()=>null)}catch(_){return Promise.resolve(null)}}
@@ -2365,11 +2418,12 @@ function newPeer(){
     if(s==='disconnected'&&CALL.st==='active'){setCallStatus('Связь прерывается…');clearTimeout(CALL._dc);CALL._dc=setTimeout(()=>{if(CALL&&CALL.pc===pc&&pc.iceConnectionState!=='connected'&&pc.iceConnectionState!=='completed')endCall('ok')},9000)}};
   return pc;
 }
-function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}}
+function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));
+  const a=document.createElement('audio');a.id='clAudio';a.autoplay=true;a.setAttribute('playsinline','');ui.appendChild(a);try{const p=a.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}}
 function attachRemote(st){
-  const ui=$('#callUI');if(!ui)return;let v=$('#clRemote');
-  if(!v){v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.playsInline=true;ui.insertBefore(v,ui.querySelector('.cl-top'))}
-  v.muted=false;v.srcObject=st;tapForSound(v);
+  const ui=$('#callUI');if(!ui)return;primeRemote();const v=$('#clRemote'),a=$('#clAudio');
+  v.muted=true;v.srcObject=st;try{v.play().catch(()=>{})}catch(_){}
+  a.muted=false;a.volume=1;a.srcObject=st;tapForSound(a);meter(st,'clRL');
   const hasV=()=>st.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted);
   const upd=()=>ui.classList.toggle('rvid',hasV());upd();st.getVideoTracks().forEach(t=>{t.onunmute=upd;t.onmute=upd;t.onended=upd});
 }
@@ -2434,9 +2488,8 @@ function realCam(){if(!CALL||!CALL.local)return;const vt=CALL.local.getVideoTrac
 /* ===== round video messages ("кружочки") ===== */
 const ROUND_MAX=60;
 async function openRoundRecorder(){
-  const c=S.chats[T.openChat];if(!c)return;
+  const c=S.chats[T.openChat];if(!c)return;if(document.querySelector('.rrec'))return;
   if(!navigator.mediaDevices||!window.MediaRecorder){toast('Этот браузер не умеет записывать видео');return}
-  let st;try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:480},height:{ideal:480}},audio:true})}catch(e){toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к камере и микрофону':'Камера недоступна');return}
   let facing='user';
   const el=document.createElement('div');el.className='rrec';
   el.innerHTML=`<div class="rr-c"><svg class="rr-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48"/><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><video autoplay muted playsinline></video></div>
@@ -2444,6 +2497,10 @@ async function openRoundRecorder(){
    <div class="rr-btns"><button class="rr-x" aria-label="Отмена">✕</button><button class="rr-go" aria-label="Записать"><i></i></button><button class="rr-flip" aria-label="Камера">🔄</button></div>
    <div class="rr-h">Нажмите на круг, чтобы начать запись</div>`;
   $('#app').appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));
+  el.querySelector('.rr-h').textContent='Включаю камеру…';
+  let st;try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:480},height:{ideal:480}},audio:true})}catch(e){el.remove();toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к камере и микрофону в настройках Safari':'Камера недоступна');return}
+  if(!el.isConnected){st.getTracks().forEach(t=>t.stop());return}
+  el.querySelector('.rr-h').textContent='Нажмите на круг, чтобы начать запись';
   const vid=el.querySelector('video');vid.srcObject=st;
   let rec=null,chunks=[],t0=0,timer=0,stopped=false;
   const mime=['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(_){return false}})||'';
@@ -2470,7 +2527,8 @@ const PUB={unsub:{},ownUnsub:{},lastSync:{}};
 function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
 function smallAv(src){return src&&src.length<120000?src:null}
 function postPayload(m){const d={text:m.text||'',time:m.time||Date.now()};if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
-function chDoc(c){return {theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
+function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
+function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
 async function publishChannel(c){
   if(!pubReady()){toast('Войдите в аккаунт, чтобы сделать канал публичным');return false}
   const F=FBX();
@@ -2527,9 +2585,12 @@ function unwatchPub(c){PUB.unsub[c.id]&&PUB.unsub[c.id]();delete PUB.unsub[c.id]
 function pubSubscribed(c,on){if(!c.pubRid||!pubReady())return;const F=FBX();F.updateDoc(F.doc(F.db,'pubchannels',c.pubRid),{real:F.increment(on?1:-1)}).catch(()=>{})}
 async function searchPublic(q){
   if(!pubReady()||q.length<2)return {ch:[],gr:[]};const F=FBX();const lo=q.toLowerCase();
-  const run=async col=>{try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.orderBy('titleLower'),F.startAt(lo),F.endAt(lo+''),F.limit(8)));return s.docs.map(d=>({id:d.id,...d.data()}))}catch(_){return []}};
+  const run=async col=>{const got=new Map();
+    try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.where('kw','array-contains',lo),F.limit(10)));s.docs.forEach(d=>got.set(d.id,{id:d.id,...d.data()}))}catch(_){}
+    try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.orderBy('titleLower'),F.startAt(lo),F.endAt(lo+''),F.limit(8)));s.docs.forEach(d=>got.set(d.id,{id:d.id,...d.data()}))}catch(_){}
+    return [...got.values()]};
   const [ch,gr]=await Promise.all([run('pubchannels'),run('pubgroups')]);
-  return {ch:ch.filter(x=>x.owner!==RT.uid),gr};
+  return {ch:ch.filter(x=>!S.chats[x.id]),gr};
 }
 function openPublicChannel(d){const c=ensurePubChat(d.id,d);save();watchPub(c);openChat(c.id)}
 /* public groups */
@@ -2537,7 +2598,7 @@ async function setGroupPublic(c,on){
   const F=FBX();
   try{
     await F.updateDoc(F.doc(F.db,'chats',c.rid),{public:on,titleLower:(c.title||'').toLowerCase()});
-    if(on)await F.setDoc(F.doc(F.db,'pubgroups',c.rid),{title:c.title,titleLower:(c.title||'').toLowerCase(),avatar:smallAv(c.avatar),color:c.color||'#65aadd',count:(c.members||[]).length+1,updatedAt:Date.now()});
+    if(on)await F.setDoc(F.doc(F.db,'pubgroups',c.rid),{kw:kwOf(c.title),title:c.title,titleLower:(c.title||'').toLowerCase(),avatar:smallAv(c.avatar),color:c.color||'#65aadd',count:(c.members||[]).length+1,updatedAt:Date.now()});
     else await F.deleteDoc(F.doc(F.db,'pubgroups',c.rid)).catch(()=>{});
     c.public=on;save();return true;
   }catch(e){toast(e&&e.code==='permission-denied'?'Сервер не пускает: обновите правила базы (я прислал новые)':fbErr(e));return false}
@@ -2560,7 +2621,7 @@ function openPrivacy(c){
       closePopups();if(ok)toast(want?(isG?'🌍 Группа публичная — её найдут по названию':'🌍 Канал публичный — его найдут по названию'):'🔒 Теперь '+(isG?'группа':'канал')+' приватный');if(T.openChat===c.id)renderChatHead()});
   });
 }
-function restorePub(){if(!pubReady())return;Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public)watchOwnPub(c)})}
+function restorePub(){if(!pubReady())return;PUB.checked=PUB.checked||{};Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public){watchOwnPub(c);if(!PUB.checked[c.id]){PUB.checked[c.id]=1;const F=FBX();F.getDoc(F.doc(F.db,'pubchannels',c.id)).then(d=>{if(!d.exists())publishChannel(c);else pubSyncMeta(c,true)}).catch(()=>{})}}})}
 
 setInterval(restorePub,5000);
 function ensureFeeds(){
@@ -3189,16 +3250,19 @@ function micSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices
 function bindMic(btn){
   let sx=0,down=false,startT=0;
   btn.addEventListener('pointerdown',e=>{
-    e.preventDefault();down=true;sx=e.clientX;startT=performance.now();
+    e.preventDefault();
+    if(REC&&REC.locked){if(REC.started)stopRec(true);return} // second tap sends
+    down=true;sx=e.clientX;startT=performance.now();
     try{btn.setPointerCapture(e.pointerId)}catch(_){}
     btn.classList.add('hold');
     startRec();
   });
   btn.addEventListener('pointermove',e=>{if(!down||!REC)return;const dx=Math.min(0,e.clientX-sx);REC.dx=dx;const bar=$('#recBar');if(bar){bar.querySelector('.rcancel').style.transform=`translateX(${dx*.6}px)`;bar.querySelector('.rcancel').style.opacity=1+dx/160}if(dx<-110)stopRec(false,'cancel')});
-  const up=()=>{if(!down)return;down=false;btn.classList.remove('hold');
+  const up=e=>{if(!down)return;down=false;btn.classList.remove('hold');
     if(!REC)return;
     if(REC.failed){const why=REC.why;REC=null;showMicFallback(why);return}
-    if(performance.now()-startT<350&&!REC.started){REC.abort=true;toast('Удерживайте кнопку, чтобы записать голосовое');return}
+    // a quick tap, a hold the phone interrupted, or the permission prompt: keep recording hands-free
+    if(!REC.started||performance.now()-startT<450||(e&&e.type==='pointercancel')){REC.locked=true;lockRecUI();return}
     stopRec(true)};
   btn.addEventListener('pointerup',up);btn.addEventListener('pointercancel',up);
   btn.addEventListener('contextmenu',e=>e.preventDefault());
@@ -3225,15 +3289,17 @@ function startRec(){
     R.raf=requestAnimationFrame(loop);
   }).catch(err=>{R.failed=true;R.why=err&&err.name;const mb=$('#micBtn');if(mb&&!mb.classList.contains('hold')&&REC===R){REC=null;showMicFallback(R.why)}});
 }
+function lockRecUI(){const bar=$('#recBar');if(!bar)return;const c=bar.querySelector('.rcancel');if(c&&!bar.querySelector('.rx')){c.textContent='Нажмите ➤ чтобы отправить';const x=document.createElement('button');x.className='rx';x.textContent='✕';x.setAttribute('aria-label','Отменить запись');x.onpointerdown=e=>{e.preventDefault();e.stopPropagation();stopRec(false,'cancel')};bar.insertBefore(x,bar.firstChild)}$('#micBtn')?.classList.add('locked')}
 function showRecUI(){
   const f=document.querySelector('.inbar');if(!f)return;
   const bar=document.createElement('div');bar.id='recBar';bar.className='recbar';
   bar.innerHTML=`<span class="rdot"></span><span class="rtime">0:00,0</span><div class="rwave"></div><span class="rcancel">‹ Влево — отмена</span>`;
   f.appendChild(bar);bar.animate([{opacity:0,transform:'translateX(30px)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(.32,.72,0,1)'});
   $('#micBtn')?.classList.add('rec');
+  if(REC&&REC.locked)lockRecUI();
 }
 function hideRecUI(cancel){
-  const bar=$('#recBar');const mb=$('#micBtn');mb&&mb.classList.remove('rec');mb&&mb.style.removeProperty('--vol');
+  const bar=$('#recBar');const mb=$('#micBtn');mb&&mb.classList.remove('rec','locked');mb&&mb.style.removeProperty('--vol');
   if(!bar)return;
   if(cancel){const d=bar.querySelector('.rdot');try{dissolve(bar)}catch(_){}d&&0}
   bar.animate([{opacity:1},{opacity:0,transform:cancel?'translateX(-40px)':'translateY(-10px)'}],{duration:240,fill:'forwards'}).onfinish=()=>bar.remove();
