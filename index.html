@@ -751,6 +751,12 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 @keyframes akRead{0%,100%{transform:translateX(-3px)}50%{transform:translateX(3px)}}
 @keyframes akSpeed{from{transform:translateX(4px);opacity:.6}to{transform:translateX(-6px);opacity:1}}
 .panel.open{display:flex;flex-direction:column}.panel .pgrid{flex:1;height:auto;min-height:0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.panel.open{height:300px}
+
+.tvoice{display:inline-flex;align-items:flex-end;gap:2px;height:11px;margin-left:5px;vertical-align:-1px}.tvoice i{width:2.5px;height:4px;border-radius:2px;background:currentColor;animation:tvb .7s ease-in-out infinite alternate}.tvoice i:nth-child(2){animation-delay:.15s}.tvoice i:nth-child(3){animation-delay:.3s}.tvoice i:nth-child(4){animation-delay:.45s}
+@keyframes tvb{to{height:11px}}
+.tround{display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid currentColor;position:relative;vertical-align:-1px}.tround::after{content:'';position:absolute;inset:2px;border-radius:50%;background:#ff3b30;animation:pulse 1s infinite}
+.teyes{display:inline-flex;gap:3px;margin-left:6px;vertical-align:-1px}.teyes i{position:relative;width:9px;height:10px;border-radius:50%;border:1.6px solid currentColor;background:transparent}.teyes i::after{content:'';position:absolute;top:3px;left:2px;width:3.5px;height:3.5px;border-radius:50%;background:currentColor;animation:teye 1.6s ease-in-out infinite}
+@keyframes teye{0%,100%{transform:translate(-1px,0)}30%{transform:translate(2.5px,-1px)}60%{transform:translate(1px,1.5px)}}
 </style>
 </head>
 <body>
@@ -932,7 +938,7 @@ function chatItemHTML(c,i){
   const typer=T.typing[c.id];
   let pv='';
   if(c.locked)pv='<span class="lockpv">🔒 Чат закрыт код-паролем</span>';
-  else if(typer){pv=`<span class="typ">${c.type==='group'?esc(S.users[typer].name.split(' ')[0])+' ':''}печатает<span class="tdots"><span>.</span><span>.</span><span>.</span></span></span>`}
+  else if(typer){pv=`<span class="typ">${c.type==='group'?esc(S.users[typer].name.split(' ')[0])+' ':''}${actHTML(c.id)}</span>`}
   else if(lm){const pre=lm.sys?'':(lm.from==='me'&&c.type!=='channel'?'<b>Вы: </b>':(c.type==='group'&&lm.from!=='me'?`<b>${esc(S.users[lm.from]?.name.split(' ')[0]||'')}: </b>`:''));pv=pre+esc(previewText(lm))}
   const ticks=!c.locked&&lm&&lm.from==='me'&&c.type!=='channel'&&!lm.call?`<span style="color:var(--ac)">${lm.status==='read'?IC.check2:IC.check}</span>`:'';
   const badge=c.unread?`<span class="badge ${c.muted?'mute':''}">${c.unread}</span>`:(c.pinned?`<span class="pinic">📌</span>`:'');
@@ -1160,7 +1166,7 @@ function openChat(cid){
   document.querySelectorAll('.similar,.subbanner').forEach(e=>e.remove());
 }
 function closeChat(){
-  musicOnClose();
+  musicOnClose();stopAct();
   const c=S.chats[T.openChat];
   if(c&&!c.remote&&c.type==='private'&&!c.messages.length&&!c.locked)delete S.chats[c.id];
   if(c&&c.locked)T.unlocked=null;
@@ -1170,7 +1176,7 @@ function closeChat(){
 }
 function headStatus(c){
   const ty=T.typing[c.id];
-  if(ty)return {t:`${c.type==='group'?esc(S.users[ty].name.split(' ')[0])+' ':''}печатает<span class="tdots"><span>.</span><span>.</span><span>.</span></span>`,blue:true};
+  if(ty)return {t:`${c.type==='group'?esc(S.users[ty].name.split(' ')[0])+' ':''}${actHTML(c.id)}`,blue:true};
   if(c.type==='private'){const u=S.users[c.user];if(u.blocked)return {t:'заблокирован(а)'};return {t:statusText(u),blue:u.online}}
   if(c.type==='group'){const on=c.members.filter(m=>S.users[m]?.online).length;return {t:`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}${on?`, ${on} в сети`:''}`}}
   if(NOBOTS&&(c.feed||c.news))return {t:c.subscribed?'вы подписаны':'канал'};
@@ -1301,7 +1307,7 @@ function renderChatBottom(){
   ta.onfocus=()=>{$('#panel').classList.remove('open');$('#emBtn').classList.remove('on')};
   $('#spBtn').onclick=()=>{T.spoilerSend=!T.spoilerSend;$('#spBtn').classList.toggle('on',T.spoilerSend);toast(T.spoilerSend?'Сообщение будет скрыто ✨':'Скрытие выключено')};
   const rb=$('#rndBtn');if(rb){rb.addEventListener('pointerdown',e=>e.preventDefault());rb.addEventListener('click',()=>{$('#panel').classList.remove('open');ta.blur();openRoundRecorder()})}
-  $('#emBtn').onclick=()=>{const p=$('#panel');const o=!p.classList.contains('open');if(o){renderPanel();ta.blur()}p.classList.toggle('open',o);$('#emBtn').classList.toggle('on',o);setTimeout(scrollBottom,300)};
+  $('#emBtn').onclick=()=>{const p=$('#panel');const o=!p.classList.contains('open');p.classList.toggle('open',o);if(o){renderPanel();ta.blur()}else if(ACT.act==='sticker')stopAct();$('#emBtn').classList.toggle('on',o);setTimeout(scrollBottom,300)};
   $('#attBtn').onclick=()=>openAttach();
   $('#pollBtn')?.addEventListener('click',openPollCreator);
   longPress(sb,()=>{sb.classList.add('press');setTimeout(()=>sb.classList.remove('press'),200);openSendMenu()},()=>doSend(),true);
@@ -1400,6 +1406,7 @@ const STICKERS=['😂','❤️','🔥','👍','🎉','🐶','😎','🥳','😍'
 const EMOJI='😀😃😄😁😆🥹😅😂🤣🥲☺️😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🥸🤩🥳😏😒😞😔😟😕🙁😣😖😫😩🥺😢😭😤😠😡🤯😳🥵🥶😱😨😰😥😓🤗🤔🫣🤭🫢🤫🤥😶😐😑😬🙄😯😦😧😮😲🥱😴🤤😪😵🤐🥴🤢🤮🤧😷🤒🤕🤑🤠😈👿👹👺🤡💩👻💀👽👾🤖🎃😺😸😹😻😼😽🙀😿😾👋🤚🖐✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👈👉👆👇☝️👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏💪❤️🧡💛💚💙💜🖤🤍🤎💔❣️💕💞💓💗💖💘💝🔥✨⭐️🌟💫🎉🎊🎁🎈🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🐔🐧🐦🦄🍎🍕🍔🍟🌭🍿☕️🍺🍷⚽️🏀🎮🎧📷💡📌✅❌';
 function renderPanel(){
   const p=$('#panel');
+  if(T.panelTab==='stk'&&p.classList.contains('open'))startAct('sticker');else if(ACT.act==='sticker')stopAct();
   const tabs=`<div class="ptabs"><button class="ptab ${T.panelTab==='emoji'?'on':''}" data-p="emoji">Эмодзи</button><button class="ptab ${T.panelTab==='stk'?'on':''}" data-p="stk">Стикеры</button><button class="ptab ${T.panelTab==='my'?'on':''}" data-p="my">Мои</button></div>`;
   let g;
   if(T.panelTab==='emoji')g=`<div class="pgrid">${[...new Intl.Segmenter().segment(EMOJI)].map(s=>`<button data-e="${s.segment}">${s.segment}</button>`).join('')}</div>`;
@@ -1409,7 +1416,7 @@ function renderPanel(){
   p.querySelectorAll('.ptab').forEach(b=>b.onclick=()=>{T.panelTab=b.dataset.p;renderPanel()});
   p.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>{T.stkPack=b.dataset.pk;renderPanel()});
   p.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{const ta=$('#txt');ta.value+=b.dataset.e;ta.dispatchEvent(new Event('input'))});
-  p.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>sendMessage({sticker:b.dataset.s}));
+  p.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{stopAct();sendMessage({sticker:b.dataset.s})});
   p.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>sendMessage({sticker:'img:'+b.dataset.m,stkImg:S.stickers[+b.dataset.m]}));
   $('#addStk2')?.addEventListener('click',()=>{let f=$('#stkPick');if(!f){f=document.createElement('input');f.type='file';f.accept='image/*';f.id='stkPick';f.hidden=true;document.body.appendChild(f)}
     f.value='';f.onchange=()=>{const file=f.files[0];if(!file)return;
@@ -2371,7 +2378,7 @@ function compressVideo(file,onp){return new Promise((res,rej)=>{
     draw();
   };
 })}
-function openVideoViewer(url,poster){
+function openVideoViewer(url,poster){aSess('playback');
   const el=document.createElement('div');el.className='vidview';el.innerHTML=`<video src="${url}" controls autoplay playsinline ${poster?`poster="${poster}"`:''}></video><button class="vx" aria-label="Закрыть">✕</button>`;
   $('#app').appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));const v=el.querySelector('video');try{const p=v.play();p&&p.catch&&p.catch(()=>{})}catch(_){}
   el.querySelector('.vx').onclick=()=>{v.pause();el.classList.remove('show');setTimeout(()=>el.remove(),250)};
@@ -2420,12 +2427,13 @@ async function videoURL(v){
   const b=new Blob(parts,{type:v.mime||'video/mp4'});IDB.put('v:'+v.fid,b);return VURL[v.fid]=URL.createObjectURL(b);
 }
 function videoHTML(m){const v=m.video;return `<div class="vid" data-vf="${v.fid}">${v.poster?`<img src="${v.poster}" alt="">`:'<div class="vph"></div>'}<span class="vplay">▶</span><span class="vdur">${fmtDur(v.dur||0)}</span></div>`}
-function playVideoIn(el,m,url){
+function playVideoIn(el,m,url){aSess('playback');
   el.classList.add('playing');
   if(m.video.round){
     el.innerHTML=`<video src="${url}" playsinline webkit-playsinline preload="auto" ${m.video.poster?`poster="${m.video.poster}"`:''}></video><svg class="rr-ring pl" viewBox="0 0 100 100"><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><span class="vplay rp">▶</span>`;
     const v=el.querySelector('video'),pr=el.querySelector('.rr-p');
     const go=()=>{const p=v.play();el.classList.remove('paused');if(p&&p.catch)p.catch(()=>el.classList.add('paused'))};
+    v.muted=false;v.volume=1;
     v.ontimeupdate=()=>{if(v.duration&&isFinite(v.duration))pr.style.strokeDashoffset=String(100-v.currentTime/v.duration*100)};
     v.onpause=()=>el.classList.add('paused');v.onplay=()=>el.classList.remove('paused');
     v.onended=()=>{el.classList.remove('playing','paused');el.onclick=null;el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
@@ -2553,7 +2561,7 @@ function attachRemote(st){
   const upd=()=>ui.classList.toggle('rvid',hasV());upd();st.getVideoTracks().forEach(t=>{t.onunmute=upd;t.onmute=upd;t.onended=upd});
 }
 function showSelf(st){if(!st.getVideoTracks().length)return;const self=$('#clSelf');if(!self)return;const v=document.createElement('video');v.autoplay=true;v.muted=true;v.playsInline=true;v.srcObject=st;self.innerHTML='';self.appendChild(v);$('#callUI').classList.add('vid')}
-async function startRealCall(c,video,fromEl){
+async function startRealCall(c,video,fromEl){aSess('play-and-record');
   if(c.type!=='private'){toast('Групповые звонки скоро появятся — пока можно звонить один на один');return}
   if(S.users[c.user]?.blocked){toast('Пользователь заблокирован — звонки недоступны');return}
   if(!window.RTCPeerConnection||!navigator.mediaDevices){toast('Этот браузер не умеет звонить. Откройте мессенджер в Safari или Chrome');return}
@@ -2579,7 +2587,7 @@ function incomingRealCall(c,sig,from){
   buildCallUI();ringtone();setCallStatus(sig.video?'Входящий видеозвонок…':'Входящий звонок…');
   CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},45000));
 }
-async function acceptRealCall(){
+async function acceptRealCall(){aSess('play-and-record');
   const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
   try{
     const st=await getMedia(K.video);if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
@@ -2599,7 +2607,7 @@ function handleSig(c,doc,x){
   else if(s.t==='answer'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.pc&&CALL.st==='ringing'){const K=CALL;stopTones();CALL.st='connecting';CALL.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).then(()=>goLive(K)).catch(()=>{toast('Не удалось соединиться');endCall('cancelled')})}}
   else if(s.t==='end'){if(CALL&&CALL.real&&CALL.callId===s.id){CALL.remoteEnded=true;endCall(s.r==='busy'?'declined':s.r==='declined'?'declined':CALL.st==='active'?'ok':CALL.dir==='in'?'missed':'cancelled')}}
 }
-function realCallCleanup(K,res,dur){
+function realCallCleanup(K,res,dur){setTimeout(()=>aSess('playback'),300);
   try{if(K.pc)K.pc.close()}catch(_){}
   if(K.local)K.local.getTracks().forEach(t=>t.stop());
   const c=S.chats[K.cid];if(!c||!c.remote)return;
@@ -2615,7 +2623,7 @@ const ROUND_MAX=60;
 async function openRoundRecorder(opt){
   opt=opt||{};const c=S.chats[T.openChat];if(!c&&!opt.onDone)return;if(document.querySelector('.rrec'))return;
   if(!navigator.mediaDevices||!window.MediaRecorder){toast('Этот браузер не умеет записывать видео');return}
-  let facing='user';
+  let facing='user';aSess('play-and-record');
   const el=document.createElement('div');el.className='rrec';
   el.innerHTML=`<div class="rr-c"><svg class="rr-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="48"/><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><video autoplay muted playsinline></video></div>
    <div class="rr-t"><span class="rr-dot"></span><span id="rrTime">0:00</span></div>
@@ -2632,7 +2640,7 @@ async function openRoundRecorder(opt){
   const vid=el.querySelector('video');vid.srcObject=st;
   let rec=null,chunks=[],t0=0,timer=0,stopped=false;
   const mime=['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(_){return false}})||'';
-  const close=()=>{clearInterval(timer);st.getTracks().forEach(t=>t.stop());el.classList.remove('show');setTimeout(()=>el.remove(),300)};
+  const close=()=>{clearInterval(timer);stopAct();st.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150);el.classList.remove('show');setTimeout(()=>el.remove(),300)};
   const grab=()=>{try{const s=Math.min(vid.videoWidth,vid.videoHeight);if(!s)return null;const cv=document.createElement('canvas');cv.width=cv.height=240;cv.getContext('2d').drawImage(vid,(vid.videoWidth-s)/2,(vid.videoHeight-s)/2,s,s,0,0,240,240);return cv.toDataURL('image/jpeg',.7)}catch(_){return null}};
   let poster=null;
   const start=()=>{chunks=[];try{rec=new MediaRecorder(st,mime?{mimeType:mime,videoBitsPerSecond:700000,audioBitsPerSecond:64000}:{})}catch(_){rec=new MediaRecorder(st)}
@@ -2640,7 +2648,7 @@ async function openRoundRecorder(opt){
     rec.onstop=()=>{if(stopped==='cancel')return;const type=(rec.mimeType||mime||'video/mp4').split(';')[0];const blob=new Blob(chunks,{type});const dur=Math.round((Date.now()-t0)/1000);close();
       if(dur<1){toast('Слишком коротко — удерживайте запись хотя бы секунду');return}
       const file=new File([blob],'round.'+(type.includes('mp4')?'mp4':'webm'),{type});if(opt.onDone){opt.onDone(file,poster,dur);return}sendVideo(file,{round:true,poster,dur})};
-    rec.start();t0=Date.now();setTimeout(()=>{poster=grab()},400);el.classList.add('on');el.querySelector('.rr-h').textContent='Нажмите ещё раз, чтобы отправить';
+    rec.start();t0=Date.now();if(!opt.onDone)startAct('round');setTimeout(()=>{poster=grab()},400);el.classList.add('on');el.querySelector('.rr-h').textContent='Нажмите ещё раз, чтобы отправить';
     timer=setInterval(()=>{const s=(Date.now()-t0)/1000;el.querySelector('#rrTime').textContent=fmtDur(s);el.querySelector('.rr-p').style.strokeDashoffset=String(100-Math.min(100,s/ROUND_MAX*100));if(s>=ROUND_MAX)stop()},200)};
   const stop=()=>{if(!rec||rec.state==='inactive')return;clearInterval(timer);rec.stop()};
   el.querySelector('.rr-go').onclick=()=>{if(!rec)start();else stop()};
@@ -3154,8 +3162,10 @@ function botTick(){
       let v=m.views||1;if(v<target&&Math.random()<.5){v+=1+Math.floor(Math.random()*Math.max(1,(target-v)/6));touched=touched||c}
       if(v<floor){v=floor+Math.floor(Math.random()*3);touched=touched||c}m.views=Math.min(Math.max(v,floor),Math.max(target,floor))});
     const age=(t-(c.created||c.messages[0]?.time||t))/HOUR;const posts=c.messages.filter(m=>!m.sys).length;
-    const cap=Math.floor(3+posts*6+age*2);
-    if(c.subs<cap&&Math.random()<.18){const add=1+Math.floor(Math.random()*(c.subs>20?3:1));c.subs+=add;c.subGrow=(c.subGrow||0)+add;touched=touched||c;if(T.openChat===c.id)updateHeadStatus()}
+    let cap=Math.floor(3+posts*6+age*2);
+    // past 100 the channel snowballs: the bigger it is, the faster it grows
+    if(c.subs>=100)cap=Math.max(cap,Math.floor(c.subs*1.8+posts*60));
+    if(c.subs<cap&&Math.random()<(c.subs>=100?.6:.18)){const add=c.subs>=100?Math.max(1,Math.ceil(c.subs*(.002+Math.random()*.008))):1+Math.floor(Math.random()*(c.subs>20?3:1));c.subs+=add;c.subGrow=(c.subGrow||0)+add;touched=touched||c;if(T.openChat===c.id)updateHeadStatus()}
     const own=c.messages.filter(m=>!m.sys&&t-m.time<3*DAY).slice(-5);
     if(own.length&&Math.random()<Math.min(.9,.12+c.subs/600)){const m=own[Math.floor(Math.random()*own.length)];const tot=Object.values(m.reactions||{}).reduce((a,v)=>a+v.n,0);
       if(tot<Math.max(2,Math.floor(c.subs*.15))){const e=['❤️','👍','🔥','😍','🎉','😂'][Math.floor(Math.random()*6)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=Math.min(Math.max(2,Math.floor(c.subs*.15))-tot,1+Math.floor(Math.random()*Math.max(1,c.subs/300)));m.views=Math.max(m.views||1,Math.min(c.subs,(m.views||1)+1+Math.floor(Math.random()*3)));touched=touched||c}}
@@ -3463,7 +3473,7 @@ function applyChatDoc(id,d){
   if(c.type==='private'){const other=(d.members||[]).find(x=>x!==RT.uid)||RT.uid;c.user=other;watchUser(other)}
   else{c.title=d.title||'Группа';c.color=d.color||'#65aadd';c.avatar=d.avatar||null;c.emoji=null;c.members=(d.members||[]).filter(x=>x!==RT.uid);c.admin=(d.admins||[]).includes(RT.uid);c.admins=d.admins||[];c.members.forEach(watchUser)}
   c.reads=d.reads||{};c.lastTime=d.updatedAt||0;
-  const tp=d.typing||{};let ty=null;Object.entries(tp).forEach(([u,t])=>{if(u!==RT.uid&&Date.now()-t<6000)ty=u});
+  const tp=d.typing||{};let ty=null,act='type',best=0;Object.entries(tp).forEach(([k,t])=>{const [u,a]=k.split('|');if(u!==RT.uid&&Date.now()-t<6000&&t>best){best=t;ty=u;act=a||'type'}});T.typAct=T.typAct||{};T.typAct[L]=act;
   if(ty){T.typing[L]=ty;clearTimeout(c._tyT);c._tyT=setTimeout(()=>{if(T.typing[L]===ty){delete T.typing[L];updateTyping(c)}},6000)}else delete T.typing[L];
   if(T.openChat===L)updateHeadStatus();
   if(!RT.msgUnsubs[id])watchMessages(c);else recomputeStatus(c);
@@ -3515,6 +3525,15 @@ function markRemoteRead(c){
   c.reads=c.reads||{};c.reads[RT.uid]=Date.now();
   F.updateDoc(F.doc(F.db,'chats',c.rid),new F.FieldPath('reads',RT.uid),Date.now()).catch(()=>{});
 }
+const ACT={timer:0,act:null,cid:null};
+function remoteAct(c,act){if(!c||!c.remote)return;const F=FBX();const t=Date.now();RT.actSent=RT.actSent||{};const k=RT.uid+'|'+act;if(t-(RT.actSent[k]||0)<2500)return;RT.actSent[k]=t;F.updateDoc(F.doc(F.db,'chats',c.rid),new F.FieldPath('typing',k),t).catch(()=>{})}
+function startAct(act){const c=S.chats[T.openChat];if(!c||!c.remote)return;stopAct();ACT.act=act;ACT.cid=c.id;remoteAct(c,act);ACT.timer=setInterval(()=>{const cc=S.chats[ACT.cid];if(cc)remoteAct(cc,act)},3000)}
+function stopAct(){clearInterval(ACT.timer);ACT.timer=0;const c=S.chats[ACT.cid];if(c&&c.remote&&ACT.act){const F=FBX();F.updateDoc(F.doc(F.db,'chats',c.rid),new F.FieldPath('typing',RT.uid+'|'+ACT.act),0).catch(()=>{})}ACT.act=null}
+function actHTML(cid){const a=(T.typAct&&T.typAct[cid])||'type';
+  if(a==='voice')return 'записывает голосовое<span class="tvoice"><i></i><i></i><i></i><i></i></span>';
+  if(a==='round')return 'записывает кружок<span class="tround"></span>';
+  if(a==='sticker')return 'выбирает стикер<span class="teyes"><i></i><i></i></span>';
+  return 'печатает<span class="tdots"><span>.</span><span>.</span><span>.</span></span>'}
 function remoteTyping(c){const F=FBX();const t=Date.now();if(t-RT.typingSent<2500)return;RT.typingSent=t;F.updateDoc(F.doc(F.db,'chats',c.rid),new F.FieldPath('typing',RT.uid),t).catch(()=>{})}
 
 /* ---------- writing ---------- */
@@ -3698,12 +3717,14 @@ function paintVoice(){
   el.querySelector('.vplay').innerHTML=a.paused?VI.play:VI.pause;
 }
 function voiceLoop(){paintVoice();if(!VP.audio.paused)VP.raf=requestAnimationFrame(voiceLoop)}
+function aSess(t){try{if(navigator.audioSession&&navigator.audioSession.type!==t)navigator.audioSession.type=t}catch(_){}}
+aSess('playback');
 function toggleVoice(id){
   const m=findMsg(id);if(!m||!m.voice)return;
   const a=VP.audio;
   if(VP.id===id&&!a.paused){a.pause();paintVoice();return}
   if(VP.id!==id){const old=VP.id;VP.id=id;a.src=m.voice.src;a.currentTime=0;if(old){const oe=voiceEl(old);if(oe){oe.classList.remove('playing');oe.querySelectorAll('.vwave i').forEach(b=>b.classList.remove('p'));oe.querySelector('.vplay').innerHTML=VI.play}}}
-  a.playbackRate=VP.speed;
+  a.playbackRate=VP.speed;a.muted=false;a.volume=1;aSess('playback');
   const pr=a.play();
   if(pr&&pr.catch)pr.catch(e=>toast(e&&e.name==='NotSupportedError'?'Это голосовое записано в формате, который ваш телефон не играет. Новые голосовые будут работать':'Не удалось воспроизвести — проверьте звук телефона'));
   if(m.from!=='me'&&!m.voice.heard){m.voice.heard=true;save();voiceEl(id)?.classList.remove('unheard')}
@@ -3746,7 +3767,7 @@ function bindMic(btn){
   btn.addEventListener('contextmenu',e=>e.preventDefault());
 }
 function startRec(){
-  if(REC)return;
+  if(REC)return;aSess('play-and-record');
   REC={chunks:[],samples:[],t0:0,dx:0};
   if(!micSupported()){REC.failed=true;REC.why='unsupported';return}
   const R=REC;
@@ -3755,7 +3776,7 @@ function startRec(){
     R.stream=stream;const mime=pickMime();
     try{R.rec=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream)}catch(_){R.rec=new MediaRecorder(stream)}
     R.rec.ondataavailable=e=>{if(e.data&&e.data.size)R.chunks.push(e.data)};
-    R.rec.start();R.started=true;R.t0=performance.now();
+    R.rec.start();R.started=true;R.t0=performance.now();startAct('voice');
     const ac=actx();if(ac){try{const src=ac.createMediaStreamSource(stream);const an=ac.createAnalyser();an.fftSize=512;src.connect(an);R.an=an;R.buf=new Uint8Array(an.fftSize)}catch(_){}}
     showRecUI();tone([880],.06,.04);
     const loop=()=>{if(REC!==R)return;let lvl=0;if(R.an){R.an.getByteTimeDomainData(R.buf);let s=0;for(let i=0;i<R.buf.length;i++){const v=(R.buf[i]-128)/128;s+=v*v}lvl=Math.min(1,Math.sqrt(s/R.buf.length)*4)}
@@ -3795,8 +3816,8 @@ function toWav(blob,dur){return new Promise(async(res,rej)=>{try{
   for(let i=0;i<d.length;i++){const x=Math.max(-1,Math.min(1,d[i]*g));if(bits===16)v.setInt16(44+i*2,x<0?x*32768:x*32767,true);else v.setUint8(44+i,Math.round((x+1)*127.5))}
   res(new Blob([W],{type:'audio/wav'}))}catch(e){rej(e)}})}
 function stopRec(send,why){
-  const R=REC;if(!R)return;REC=null;cancelAnimationFrame(R.raf);
-  const finish=()=>{R.stream&&R.stream.getTracks().forEach(t=>t.stop())};
+  const R=REC;if(!R)return;REC=null;stopAct();cancelAnimationFrame(R.raf);
+  const finish=()=>{R.stream&&R.stream.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150)};
   if(!R.rec){finish();hideRecUI(true);return}
   const dur=(performance.now()-R.t0)/1000;
   if(!send||dur<.6){try{R.rec.stop()}catch(_){}finish();hideRecUI(true);if(why==='cancel'){toast('Запись отменена');tone([300],.08,.04)}else if(send)toast('Слишком коротко — удерживайте дольше');return}
