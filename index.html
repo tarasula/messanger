@@ -2934,6 +2934,6 @@ renderMain();
 if(DEMO)setTimeout(()=>{const c=S.chats.p_u1;if(c&&S.users.u1.online&&!T.typing[c.id])scheduleReply(c,'u1')},6000);
 })();
 </script>
-<script>try{if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}catch(_){}</script>
+<script>try{if('serviceWorker' in navigator){let had=!!navigator.serviceWorker.controller,rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!rl){rl=true;location.reload()}});addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{r.update();setInterval(()=>r.update(),30*60000)}).catch(()=>{}))}}catch(_){}</script>
 </body>
 </html>
