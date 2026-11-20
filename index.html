@@ -739,6 +739,17 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 .sv-load{position:absolute;bottom:20%;left:0;right:0;text-align:center;opacity:.8}
 .sv-voice{position:relative;display:flex;align-items:center;gap:12px;padding:16px 24px;border-radius:30px;background:rgba(0,0,0,.35);font-size:20px;font-weight:600}.sv-voice .uico{width:28px;height:28px}.sv-voice.tap{animation:pulse 1s infinite;cursor:pointer;z-index:4}
 .sv-snd{position:absolute;bottom:22%;left:50%;transform:translateX(-50%);z-index:4;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#000;font:inherit;font-weight:600;display:flex;gap:6px;align-items:center}
+
+.ak-zoom{animation:akZoom .9s ease-in-out infinite}
+.astk .ak-rain{animation:akRain 1.6s ease-in infinite}.astk .d3{animation-delay:1.1s}
+.astk .ak-paper{animation:akPaper 2.4s ease-in-out infinite;transform-origin:50% 100%}
+.astk .ak-read{animation:akRead 2.4s ease-in-out infinite}
+.astk .ak-speed{animation:akSpeed .35s linear infinite}
+@keyframes akZoom{0%,100%{transform:translateX(0) translateY(0)}50%{transform:translateX(4px) translateY(-4px)}}
+@keyframes akRain{0%{transform:translateY(-18px) rotate(0);opacity:0}20%{opacity:1}100%{transform:translateY(26px) rotate(40deg);opacity:0}}
+@keyframes akPaper{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg) translateY(-2px)}}
+@keyframes akRead{0%,100%{transform:translateX(-3px)}50%{transform:translateX(3px)}}
+@keyframes akSpeed{from{transform:translateX(4px);opacity:.6}to{transform:translateX(-6px);opacity:1}}
 </style>
 </head>
 <body>
@@ -1391,7 +1402,7 @@ function renderPanel(){
   const tabs=`<div class="ptabs"><button class="ptab ${T.panelTab==='emoji'?'on':''}" data-p="emoji">Эмодзи</button><button class="ptab ${T.panelTab==='stk'?'on':''}" data-p="stk">Стикеры</button><button class="ptab ${T.panelTab==='my'?'on':''}" data-p="my">Мои</button></div>`;
   let g;
   if(T.panelTab==='emoji')g=`<div class="pgrid">${[...new Intl.Segmenter().segment(EMOJI)].map(s=>`<button data-e="${s.segment}">${s.segment}</button>`).join('')}</div>`;
-  else if(T.panelTab==='stk'){const pk=T.stkPack||'kol';g=`<div class="spacks">${ASTK_PACKS.map(p=>`<button class="spk ${p.k===pk?'on':''}" data-pk="${p.k}">${astkSVG('ax:'+p.k+':'+(p.k==='fun'?0:1))}<span>${p.n}</span></button>`).join('')}</div><div class="pgrid st ax">${Array.from({length:10},(_,i)=>`<button data-s="ax:${pk}:${i}">${astkSVG('ax:'+pk+':'+i)}</button>`).join('')}</div>`}
+  else if(T.panelTab==='stk'){const pk=T.stkPack||'enot';g=`<div class="spacks">${ASTK_PACKS.map(p=>`<button class="spk ${p.k===pk?'on':''}" data-pk="${p.k}">${astkSVG('ax:'+p.k+':'+(p.k==='fun'?0:p.k==='enot'?8:1))}<span>${p.n}</span></button>`).join('')}</div><div class="pgrid st ax">${Array.from({length:10},(_,i)=>`<button data-s="ax:${pk}:${i}">${astkSVG('ax:'+pk+':'+i)}</button>`).join('')}</div>`}
   else g=`<div class="pgrid st">${S.stickers.map((s,i)=>`<button data-m="${i}"><img src="${s}"></button>`).join('')}<button class="addstk" id="addStk2">+</button></div>`;
   p.innerHTML=tabs+g;
   p.querySelectorAll('.ptab').forEach(b=>b.onclick=()=>{T.panelTab=b.dataset.p;renderPanel()});
@@ -2823,6 +2834,7 @@ setTimeout(()=>swapIcons(document.body),0);
 
 /* ===== animated sticker packs (10 each, drawn here) ===== */
 const ASTK_PACKS=[
+ {k:'enot',n:'Енотик',col:['#a7a9bd','#8d8fa3']},
  {k:'kol',n:'Колобок',col:['#ffd54a','#ffb300']},
  {k:'cat',n:'Котик',col:['#ffb57a','#f08a3c']},
  {k:'fun',n:'Огоньки',col:['#ff5a7a','#ff2d55']}];
@@ -2861,7 +2873,33 @@ function funSVG(i){
   if(it==='sparkle')return S0('ak-spin',`<path d="M60 10q6 40 46 50-40 6-46 50-6-44-46-50 40-10 46-50z" fill="#a78bfa" stroke="#3e2a8a" stroke-width="4" stroke-linejoin="round"/><path d="M96 16q2 12 14 14-12 2-14 14-2-12-14-14 12-2 14-14z" fill="#f472b6"/><path d="M22 84q2 10 12 12-10 2-12 12-2-10-12-12 10-2 12-12z" fill="#60a5fa"/>`);
   return S0('ak-float',`<path d="M28 104V54a32 32 0 0164 0v50l-11-9-10 9-11-9-10 9-11-9z" fill="#f6f7fb" stroke="#3b3f52" stroke-width="4"/><ellipse class="ak-blink" cx="48" cy="54" rx="5" ry="8" fill="#2b2b3a"/><ellipse class="ak-blink" cx="72" cy="54" rx="5" ry="8" fill="#2b2b3a"/><ellipse cx="60" cy="74" rx="6" ry="5" fill="#2b2b3a"/>`);
 }
-function astkSVG(id){const [,pack,ix]=id.split(':');const i=+ix;if(pack==='fun')return funSVG(i);if(ASTK_PACKS.some(p=>p.k===pack))return faceSVG(pack,i);return ''}
+/* pack: raccoon (original character, sticker style) */
+function enotSVG(i){
+  const O='#2b2633',W='stroke="'+O+'" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"';
+  const head=(eyes,mouth,cls)=>`<g class="${cls||''}"><path d="M30 34L36 8L56 26Z" fill="#8d8fa3" ${W}/><path d="M90 34L84 8L64 26Z" fill="#8d8fa3" ${W}/><path d="M37 26L39 15L48 24Z" fill="#f0c9d6"/><path d="M83 26L81 15L72 24Z" fill="#f0c9d6"/>
+   <ellipse cx="60" cy="52" rx="40" ry="34" fill="#a7a9bd" ${W}/><path d="M24 50q14-16 30-4q6 4 12 0q16-12 30 4q-6 18-22 12q-10-4-14 2q-4-6-14-2q-16 6-22-12z" fill="#3b3646"/>
+   <ellipse cx="60" cy="68" rx="20" ry="14" fill="#efeef5" ${W}/><ellipse cx="60" cy="61" rx="6" ry="4.5" fill="${O}"/>${eyes}${mouth}</g>`;
+  const eyesN=`<g class="ak-blink"><ellipse cx="44" cy="50" rx="8" ry="9" fill="#fff" stroke="${O}" stroke-width="3"/><ellipse cx="76" cy="50" rx="8" ry="9" fill="#fff" stroke="${O}" stroke-width="3"/><circle class="ak-look" cx="45" cy="51" r="4.5" fill="${O}"/><circle class="ak-look" cx="77" cy="51" r="4.5" fill="${O}"/><circle cx="47" cy="48" r="1.6" fill="#fff"/><circle cx="79" cy="48" r="1.6" fill="#fff"/></g>`;
+  const smile=`<path d="M52 70q8 7 16 0" fill="none" ${W}/>`;
+  const body=(c)=>`<ellipse cx="60" cy="104" rx="30" ry="16" fill="#a7a9bd" ${W}/><ellipse cx="60" cy="106" rx="16" ry="10" fill="#efeef5"/>`;
+  const shadow=`<ellipse cx="60" cy="116" rx="36" ry="5" fill="#000" opacity=".14"/>`;
+  const S0=(cls,inner)=>`<svg class="astk ${cls}" viewBox="0 0 120 120" width="120" height="120">${shadow}${inner}</svg>`;
+  const bill=(x,y,r,cls)=>`<g class="${cls}" transform="translate(${x} ${y}) rotate(${r})"><rect x="-13" y="-7" width="26" height="14" rx="2" fill="#7bd36a" ${W}/><circle cx="0" cy="0" r="3.5" fill="#3f9a33"/></g>`;
+  switch(i){
+  case 0: return S0('ak-bob',`${body()}${head(eyesN,`<path d="M48 70q12 12 24 0z" fill="#e8576d" ${W}/>`)}${bill(16,34,-20,'ak-rain')}${bill(100,24,15,'ak-rain d2')}${bill(28,88,10,'ak-rain d3')}${bill(96,86,-12,'ak-rain d2')}<g>${bill(42,104,-8,'')}${bill(62,108,6,'')}${bill(80,102,-4,'')}</g>`);
+  case 1: return S0('ak-breathe',`${body()}${head(`<g class="ak-read"><ellipse cx="44" cy="50" rx="7" ry="6" fill="#fff" stroke="${O}" stroke-width="3"/><ellipse cx="76" cy="50" rx="7" ry="6" fill="#fff" stroke="${O}" stroke-width="3"/><circle cx="44" cy="53" r="3.5" fill="${O}"/><circle cx="76" cy="53" r="3.5" fill="${O}"/></g>`,'')}<g class="ak-paper"><path d="M22 70l38 6 38-6v40l-38 6-38-6z" fill="#f7f1e3" ${W}/><path d="M60 76v40" stroke="${O}" stroke-width="3"/><text x="27" y="88" font-family="Arial Black,Arial" font-weight="900" font-size="9" fill="${O}" transform="rotate(5 40 85)">НОВОСТИ</text><path d="M28 96h26M28 102h22M66 92h26M66 98h24M66 104h20" stroke="#9a948a" stroke-width="3" stroke-linecap="round"/><rect x="28" y="106" width="12" height="7" rx="2" fill="#3e88f7"/></g>`);
+  case 2: return S0('ak-zoom',`<g class="ak-speed"><path d="M2 54h26M6 70h20M10 86h22" stroke="#ff5a7a" stroke-width="7" stroke-linecap="round"/><path d="M4 62h18M8 78h16" stroke="#ffd23f" stroke-width="7" stroke-linecap="round"/></g><g transform="translate(14 -2) rotate(-12 60 60)">${body()}${head(`<g><path d="M36 50q8-6 16 0" fill="none" ${W}/><ellipse cx="76" cy="50" rx="8" ry="9" fill="#fff" stroke="${O}" stroke-width="3"/><circle cx="78" cy="50" r="4.5" fill="${O}"/></g>`,`<ellipse cx="60" cy="72" rx="5" ry="5" fill="#e8576d" ${W}/>`)}<path d="M28 98q-10 2-16-6M92 98q10 2 16-6" fill="none" ${W}/></g>`);
+  case 3: return S0('ak-bob',`${body()}${head(`<g class="ak-pulse"><path d="M44 58l-9-9a5.5 5.5 0 019-6 5.5 5.5 0 019 6z" fill="#ff3b5c" ${W.replace('4','2.5')}/><path d="M76 58l-9-9a5.5 5.5 0 019-6 5.5 5.5 0 019 6z" fill="#ff3b5c" ${W.replace('4','2.5')}/></g>`,smile)}<g class="ak-rise"><path d="M100 30l-7-7a4 4 0 017-5 4 4 0 017 5z" fill="#ff5a7a" ${W.replace('4','2.5')}/></g><g class="ak-rise d2"><path d="M20 36l-6-6a3.5 3.5 0 016-4 3.5 3.5 0 016 4z" fill="#ff5a7a" ${W.replace('4','2.5')}/></g>`);
+  case 4: return S0('ak-sob',`${body()}${head(`<path d="M36 52q8-7 16 0M68 52q8-7 16 0" fill="none" ${W}/>`,`<path d="M50 76q10-9 20 0" fill="none" ${W}/>`)}<g class="ak-drop"><path d="M42 56q-6 10 0 13q6-3 0-13z" fill="#59b4ff" ${W.replace('4','2.5')}/></g><g class="ak-drop d2"><path d="M78 56q-6 10 0 13q6-3 0-13z" fill="#59b4ff" ${W.replace('4','2.5')}/></g>`);
+  case 5: return S0('ak-shake',`${body()}${head(`<path d="M36 46l10 5-10 5M84 46l-10 5 10 5" fill="none" ${W}/>`,`<path d="M46 68h28q0 16-14 16t-14-16z" fill="#e8576d" ${W}/>`)}<g class="ak-tear"><path d="M26 56q-6 8 0 12q6-4 0-12z" fill="#59b4ff"/></g><g class="ak-tear d2"><path d="M94 56q-6 8 0 12q6-4 0-12z" fill="#59b4ff"/></g>`);
+  case 6: return S0('ak-breathe',`${body()}${head(`<path d="M36 52q8 6 16 0M68 52q8 6 16 0" fill="none" ${W}/>`,`<ellipse cx="60" cy="74" rx="4" ry="3" fill="${O}"/>`)}<g class="ak-zzz" font-family="Arial Black,Arial" font-weight="900" fill="#7c8cff" stroke="${O}" stroke-width="1.5"><text x="90" y="34" font-size="18">Z</text></g><g class="ak-zzz d2" font-family="Arial Black,Arial" font-weight="900" fill="#7c8cff" stroke="${O}" stroke-width="1.2"><text x="100" y="18" font-size="12">z</text></g><path d="M20 108q-12-20 6-30" fill="none" stroke="#3b3646" stroke-width="10" stroke-linecap="round"/>`);
+  case 7: return S0('ak-groove',`${body()}${head(eyesN,`<path d="M48 70q12 12 24 0z" fill="#e8576d" ${W}/>`)}<g class="ak-wave"><path d="M86 96q16-10 18-26" fill="none" ${W}/><circle cx="104" cy="66" r="7" fill="#a7a9bd" ${W}/></g><g class="ak-wave d2" style="transform-origin:80% 90%"><path d="M34 96q-16-10-18-26" fill="none" ${W}/><circle cx="16" cy="66" r="7" fill="#a7a9bd" ${W}/></g><g class="ak-conf"><path d="M14 20l6 4M104 16l-5 6M20 44l7-2" stroke="#ffcc00" stroke-width="4" stroke-linecap="round"/></g>`);
+  case 8: return S0('ak-bob',`${body()}${head(eyesN,`<path d="M48 70q12 12 24 0z" fill="#e8576d" ${W}/>`)}<g class="ak-wave"><path d="M90 96q14-14 12-34" fill="none" ${W}/><circle cx="102" cy="58" r="9" fill="#a7a9bd" ${W}/><path d="M96 50v-7M102 48v-9M108 50v-7" stroke="${O}" stroke-width="3.5" stroke-linecap="round"/></g>`);
+  default: return S0('ak-breathe',`${body()}${head(`<path d="M36 50q8-5 16 0M68 50q8-5 16 0" fill="none" ${W}/>`,smile)}<g><path d="M44 94h32l-4 22H48z" fill="#ffffff" ${W}/><path d="M76 99q10 0 10 7t-10 7" fill="none" ${W}/><ellipse cx="60" cy="95" rx="15" ry="3" fill="#7a4a2a"/></g><g class="ak-steam"><path d="M54 88q-4-6 0-12M62 86q-4-6 0-12" fill="none" stroke="#c9c9d6" stroke-width="3.5" stroke-linecap="round"/></g>`);
+  }
+}
+
+function astkSVG(id){const [,pack,ix]=id.split(':');const i=+ix;if(pack==='enot')return enotSVG(i);if(pack==='fun')return funSVG(i);if(ASTK_PACKS.some(p=>p.k===pack))return faceSVG(pack,i);return ''}
 function isAstk(s){return typeof s==='string'&&s.startsWith('ax:')}
 
 /* ===== statuses (24 h) shown as rings above the chat list ===== */
