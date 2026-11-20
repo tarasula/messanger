@@ -1359,7 +1359,7 @@ function sendMessage(o,when){
   if(typeof when==='number'){m.status='scheduled';m.schedAt=when}
   else if(when==='online'){m.status='waiting'}
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
-  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);const was=c.subs||0;c.subs=was+20;c.subGrow=(c.subGrow||0)+20;save();setTimeout(()=>{updateHeadStatus();toast('+20 подписчиков')},400)}
+  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);{const add=20+Math.floor(Math.random()*31);let left=add;const step=()=>{const k=Math.min(left,2+Math.floor(Math.random()*6));c.subs=(c.subs||0)+k;c.subGrow=(c.subGrow||0)+k;left-=k;save();if(T.openChat===c.id)updateHeadStatus();if(left>0)setTimeout(step,250+Math.random()*300);else pubSyncMeta(c,true)};setTimeout(step,300);setTimeout(()=>toast('+'+add+' подписчиков'),500)}}
   if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
   if(m.status==='sent')afterSent(c);
 }
@@ -2669,7 +2669,7 @@ function roundHTML(m){const v=m.video;return `<div class="vid round" data-vf="${
 const PUB={unsub:{},ownUnsub:{},lastSync:{}};
 function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
 function smallAv(src){return src&&src.length<120000?src:null}
-function postPayload(m){const d={text:m.text||'',time:m.time||Date.now()};if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
+function postPayload(m){const d={text:m.text||'',time:m.time||Date.now(),views:m.views||1,reacts:Object.fromEntries(Object.entries(m.reactions||{}).map(([e,v])=>[e,v.n||0]))};if(m.poll)d.votes=m.poll.opts.map(o=>o.v||0);if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
 
 /* ---- when the database rules are old: store statuses and public channels in the user's own profile (allowed by the old rules) ---- */
 function legacy(){return !!RT.oldRules}
@@ -2707,7 +2707,8 @@ async function unpublishChannel(c){
 }
 function pubPost(c,m){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
 function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
-function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<(legacy()?60000:20000))return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
+function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<8000)return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
+  {const F2=FBX();c.messages.filter(m=>!m.sys).slice(-10).forEach(m=>F2.setDoc(F2.doc(F2.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{}))}
   const F=FBX();const d=chDoc(c);delete d.created;F.updateDoc(F.doc(F.db,'pubchannels',c.id),d).catch(()=>{})}
 function watchOwnPub(c){if(legacy())return; // real people who subscribed are added to the owner's count too
   if(PUB.ownUnsub[c.id]||!pubReady())return;const F=FBX();
@@ -2726,6 +2727,10 @@ function mapPost(c,doc,prev){
   const d=doc.data();const m={id:doc.id,from:c.id,text:d.text||'',time:d.time||Date.now(),status:'sent',reactions:prev?prev.reactions:{},views:prev?prev.views:0};
   if(d.spoiler)m.spoiler=true;if(d.img)m.img=d.img;if(d.title)m.title=d.title;if(d.sticker)m.sticker=d.sticker;if(d.voice)m.voice={...d.voice,heard:prev&&prev.voice&&prev.voice.heard};
   if(d.poll)m.poll=prev&&prev.poll&&prev.poll.q===d.poll.q?prev.poll:{q:d.poll.q,opts:d.poll.opts.map(t=>({t,v:0})),voted:-1};
+  if(d.views){ // the channel owner's numbers win: every device shows the same
+    m.views=Math.max(d.views,prev&&prev.views||0);const R={};Object.entries(d.reacts||{}).forEach(([e,n])=>{const mine=prev&&prev.reactions&&prev.reactions[e]&&prev.reactions[e].mine;R[e]={n:n+(mine?1:0),mine:!!mine}});
+    if(prev&&prev.reactions)Object.entries(prev.reactions).forEach(([e,v])=>{if(v.mine&&!R[e])R[e]={n:1,mine:true}});m.reactions=R;
+    if(m.poll&&Array.isArray(d.votes))m.poll.opts.forEach((o,i)=>{o.v=Math.max(d.votes[i]||0,0)+(m.poll.voted===i?1:0)});return m}
   if(!prev){ // first look: as many people have seen and reacted as the channel is big
     const subs=c.subs||1,age=Math.min(1,(Date.now()-m.time)/(6*HOUR)+.15);
     m.views=Math.max(1,Math.round(subs*(.25+Math.random()*.45)*age));
@@ -3156,10 +3161,10 @@ function feedTick(initial){
 function minViews(m){const r=Object.values(m.reactions||{}).reduce((x,v)=>x+(v.n||0),0);const p=m.poll?m.poll.opts.reduce((x,o)=>x+(o.v||0),0):0;return Math.max(r,p)+1}
 function botTick(){
   if(NOBOTS)return;
-  {const fl=Object.values(S.chats).filter(c=>(c.feed||(c.pubRid&&c.subscribed))&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*Math.max(9,c.subs/2500));save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
+  {const fl=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*Math.max(9,c.subs/2500));save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
   const t=now();const E=['❤️','🔥','😂','😮','👍','🤯','🎉','😍'];let touched=null;
   for(let rep=0;rep<3;rep++){
-  const feeds=Object.values(S.chats).filter(c=>(c.feed||(c.pubRid&&c.subscribed))&&c.messages.length);
+  const feeds=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);
   if(feeds.length){const c=feeds[Math.floor(Math.random()*feeds.length)];const recent=c.messages.slice(-6);const m=recent[Math.floor(Math.random()*recent.length)];
     if(m&&!m.sys){const e=Object.keys(m.reactions||{}).length&&Math.random()<.92?Object.keys(m.reactions)[Math.floor(Math.random()*Object.keys(m.reactions).length)]:E[Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=1+Math.floor(Math.random()*Math.max(4,c.subs/4000));m.views=(m.views||0)+3+Math.floor(Math.random()*Math.max(20,c.subs/500));touched=c}}}
   Object.values(S.chats).filter(c=>!c.remote&&(!REAL||c.type==='channel')).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<(c.type==='channel'?Math.min(.9,.2+c.subs/400):.2)){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v+=c.type==='channel'?Math.min(cap-tot,1+Math.floor(Math.random()*Math.max(1,c.subs/120))):1;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
