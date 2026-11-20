@@ -832,6 +832,10 @@ body.incog .mtm,body.incog .item .tm>:not(span),body.incog .callrow .tm{visibili
 .arc-top{display:flex;gap:8px;align-items:center}.arc-top .arc-in{flex:1}
 .lang-r .lang-n{flex:1}
 body.rtl .r .v{margin-left:0;margin-right:auto}
+.lic.gx{color:inherit;width:1.1em;height:1.1em;margin-right:.3em;vertical-align:-0.16em}.lic.gx .uico{width:100%;height:100%}.lic.gx.solo{margin:0;width:1em;height:1em}
+.pf-top .lic.gx.solo,.empty .lic.gx.solo,.onb-ic .lic.gx.solo{color:var(--ac)}
+.nt-big{width:64px;height:64px;margin:0 auto;color:#ff3b30}.nt-big svg{width:100%;height:100%}
+body.rtl .lic.gx{margin-right:0;margin-left:.3em}
 </style>
 </head>
 <body>
@@ -1118,6 +1122,7 @@ function renderSettings(){
      <div class="r" id="setAe"><span class="ico" style="background:#ff2d55">✨</span>Анимированные эмодзи<span class="sw ${S.animEmoji?'on':''}"></span></div>
      <div class="r" id="setArch"><span class="ico" style="background:#8e8e93">🗂</span>Архив и закрытые чаты<span class="v">потяните чаты вниз</span></div>
      ${REAL?`<div class="r" id="setOut"><span class="ico" style="background:#5856d6">🚪</span>Выйти из аккаунта</div><div class="r red" id="setDelAcc"><span class="ico" style="background:#ff3b30">🗑</span>Удалить аккаунт</div>`:''}
+     <div class="r" id="setNtf"><span class="ico" style="background:#ff3b30">🔔</span>Уведомления<span class="v">${pushState()==='granted'&&S.pushOn?'Включены':'Выкл.'}</span></div>
      <div class="r" id="setLang"><span class="ico" style="background:#007aff">🌐</span>Язык<span class="v" data-notr>${(LANGS.find(x=>x[0]===lang())||LANGS[0])[1]}</span></div>
      <div class="r" id="setInc"><span class="ico" style="background:#1c1c1e">🕶</span>Режим инкогнито<span class="v">${incog()?'Включён':'Выкл.'}</span></div>
      <div class="r" id="setSto"><span class="ico" style="background:#34c759">📦</span>Данные и память</div>
@@ -1138,7 +1143,7 @@ function renderSettings(){
   $('#setPc').onclick=()=>{const setNew=()=>openPasscode({mode:'set',title:'Новый код-пароль',onOk:c=>{S.passcode=c;save();renderSettings();toast('Код-пароль сохранён')}});if(S.passcode)openPasscode({mode:'check',title:'Текущий код-пароль',onOk:()=>setTimeout(setNew,400)});else setNew()};
   $('#setAe').onclick=()=>{S.animEmoji=!S.animEmoji;save();$('#setAe .sw').classList.toggle('on',S.animEmoji);document.body.classList.toggle('noanim',!S.animEmoji)};
   $('#setArch').onclick=()=>{T.tab='chats';T.archive=true;renderMain()};
-  $('#setSnd').onclick=openSoundCheck;$('#setLang').onclick=openLanguage;$('#setInc').onclick=openIncognito;$('#setSto').onclick=openStorage;$('#setBd').onclick=openBirthday;$('#setArc').onclick=openStatusArchive;
+  $('#setSnd').onclick=openSoundCheck;$('#setLang').onclick=openLanguage;$('#setNtf').onclick=openNotifSettings;$('#setInc').onclick=openIncognito;$('#setSto').onclick=openStorage;$('#setBd').onclick=openBirthday;$('#setArc').onclick=openStatusArchive;
   $('#setAbout').onclick=()=>openSheet('О мессенджере',`<div class="pf-top"><div style="font-size:54px">💬</div><p class="pf-desc">Переписка, звонки, голосовые и кружочки — между настоящими людьми.<br><br>В каналах часть подписчиков, просмотров, реакций и голосов в опросах добавляют боты-фанаты, чтобы каналы росли живее.</p></div>`);
   $('#setBl').onclick=()=>{const bl=Object.entries(S.users).filter(([,u])=>u.blocked);openSheet('Заблокированные',bl.length?bl.map(([id,u])=>`<div class="chk" data-u="${id}">${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},40)}<div>${esc(u.name)}</div><button class="link" style="margin-left:auto">Разблокировать</button></div>`).join(''):'<div class="empty">Никого нет 🙂</div>',sh=>sh.querySelectorAll('[data-u]').forEach(r=>r.querySelector('button').onclick=()=>{S.users[r.dataset.u].blocked=false;save();r.animate([{opacity:1},{opacity:0,transform:'translateX(40px)'}],{duration:250,fill:'forwards'}).onfinish=()=>r.remove();renderSettings()}))};
   $('#addStk').onclick=()=>pickImage(d=>{S.stickers.push(d);save();renderSettings();toast('Стикер добавлен')},256);
@@ -2729,8 +2734,8 @@ async function startRealCall(c,video,fromEl){aSess('auto');
     await pc.setLocalDescription(await pc.createOffer());await waitIce(pc);
     if(!CALL||CALL.callId!==id)return;
     await sigSend(c,{t:'offer',id,sdp:pc.localDescription.sdp,video:CALL.video});
-    CALL.st='ringing';setCallStatus('Звонок…');ringback();
-    CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===id&&CALL.st==='ringing')endCall('missed')},45000));
+    CALL.st='ringing';setCallStatus('Звонок…');ringback();try{pushForCall(c,id,CALL.video)}catch(_){}
+    CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===id&&CALL.st==='ringing')endCall('missed')},55000));
   }catch(e){toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к микрофону, чтобы звонить':'Не удалось начать звонок');endCall('cancelled')}
 }
 function incomingRealCall(c,sig,from){
@@ -2739,7 +2744,7 @@ function incomingRealCall(c,sig,from){
   CALL={cid:c.id,video:!!sig.video,group:false,dir:'in',st:'incoming',t0:0,muted:false,speaker:false,min:false,key:callKeyFrom(sig.id),timers:[],raf:0,joined:[],real:true,callId:sig.id,offer:sig.sdp};
   if(T.openChat!==c.id&&$('#chat').classList.contains('open')){}
   buildCallUI();ringtone();setCallStatus(sig.video?'Входящий видеозвонок…':'Входящий звонок…');
-  CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},45000));
+  CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},Math.max(5000,55000-(Date.now()-(sig._t||Date.now())))));
 }
 async function acceptRealCall(){aSess('auto');
   const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
@@ -2756,8 +2761,8 @@ async function acceptRealCall(){aSess('auto');
 }
 function handleSig(c,doc,x){
   if(x.from===RT.uid)return;const key=doc.id;if(RTCX.seen.has(key))return;RTCX.seen.add(key);
-  const s=x.sig||{};if(Date.now()-(x.time||0)>45000&&s.t==='offer')return;
-  if(s.t==='offer')incomingRealCall(c,s,x.from);
+  const s=x.sig||{};if(Date.now()-(x.time||0)>55000&&s.t==='offer')return;
+  if(s.t==='offer')incomingRealCall(c,{...s,_t:x.time},x.from);
   else if(s.t==='answer'){if(CALL&&CALL.real&&CALL.callId===s.id&&CALL.pc&&CALL.st==='ringing'){const K=CALL;stopTones();CALL.st='connecting';CALL.pc.setRemoteDescription({type:'answer',sdp:s.sdp}).then(()=>goLive(K)).catch(()=>{toast('Не удалось соединиться');endCall('cancelled')})}}
   else if(s.t==='end'){if(CALL&&CALL.real&&CALL.callId===s.id){CALL.remoteEnded=true;endCall(s.r==='busy'?'declined':s.r==='declined'?'declined':CALL.st==='active'?'ok':CALL.dir==='in'?'missed':'cancelled')}}
 }
@@ -2766,6 +2771,7 @@ function realCallCleanup(K,res,dur){setTimeout(()=>aSess('playback'),300);
   if(K.local)K.local.getTracks().forEach(t=>t.stop());
   const c=S.chats[K.cid];if(!c||!c.remote)return;
   if(!K.remoteEnded)sigSend(c,{t:'end',id:K.callId,r:res==='declined'?'declined':res});
+  try{if(!K.t0)pushCallEnded(c,K,res)}catch(_){}
   if(K.dir==='out')remoteWrite(c,{from:RT.uid,time:Date.now(),text:'',call:{video:!!K.video,dur:Math.round(dur),res}});
 }
 function realMute(){if(CALL&&CALL.local)CALL.local.getAudioTracks().forEach(t=>t.enabled=!CALL.muted)}
@@ -3011,9 +3017,14 @@ const UIC={
  status:SV('<circle cx="12" cy="12" r="9" stroke-dasharray="3 2.2"/><path d="M12 8v8M8 12h8"/>'),
  eye:SV('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
  broomx:SV('<path d="M3 21l7-7M14 4l6 6-8 8-6-6z"/>'),
- x:SV('<path d="M6 6l12 12M18 6L6 18"/>')
+ x:SV('<path d="M6 6l12 12M18 6L6 18"/>'),
+ cake:SV('<path d="M4 21h16M5 21v-7a2 2 0 012-2h10a2 2 0 012 2v7M5 16c1.5 1.2 3 1.2 4.5 0s3-1.2 4.5 0 3 1.2 5 0M12 12V8M12 5.5c-.8-.8-.8-1.7 0-2.5.8.8.8 1.7 0 2.5z"/>'),
+ party:SV('<path d="M4 20l5-14 9 9z"/><path d="M14 4l1-1M18 8l2-1M17 3l.5 2M20 11l1 .5M11 9l3 3"/>'),
+ glasses:SV('<circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6h2M21 14l-1.5-6h-2"/>'),
+ play:SV('<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>'),
+ wave:SV('<path d="M8 13V5.5a1.5 1.5 0 013 0V11M11 10V4.5a1.5 1.5 0 013 0V11M14 10.5V6a1.5 1.5 0 013 0v7a7 7 0 01-7 7h-.5a6 6 0 01-5-2.7L2.7 14a1.6 1.6 0 012.5-2L8 15"/>')
 };
-const EMO2IC={'🖼':'image','🖼️':'image','⭐':'star','🔔':'bell','🔕':'belloff','🎨':'palette','🎵':'music','🎶':'music','⏱':'timer','⏱️':'timer','🔒':'lock','🔐':'lock','🔓':'unlock','👤':'user','👥':'users','➕':'plus','＋':'plus','📤':'export','🧹':'broom','🗑':'trash','🗑️':'trash','🚫':'block','✅':'check','⚠️':'alert','⚠':'alert','📌':'pin','🌍':'globe','📊':'poll','📞':'phone','🎥':'video','📹':'video','🎬':'film','⭕':'round','🔍':'search','↩️':'reply','↩':'reply','📋':'copy','↗️':'share','↗':'share','✏️':'edit','✏':'edit','💬':'chat','🚪':'leave','🔗':'link','📄':'doc','ℹ️':'info','ℹ':'info','ⓘ':'info','🎤':'mic','🔊':'speaker','📷':'camera','📸':'camera','📢':'megaphone','🗂':'archive','🗄':'archive','📦':'archive','🌙':'moon','😀':'smile','🙂':'smile','⚙️':'gear','⚙':'gear','🛡':'shield','🛡️':'shield','📱':'device','❤️':'heart','📅':'calendar','🟢':'dot','🔑':'key','✨':'spark','👁':'eye','👁️':'eye','✕':'x','🔄':'spark'};
+const EMO2IC={'🖼':'image','🖼️':'image','⭐':'star','🔔':'bell','🔕':'belloff','🎨':'palette','🎵':'music','🎶':'music','⏱':'timer','⏱️':'timer','🔒':'lock','🔐':'lock','🔓':'unlock','👤':'user','👥':'users','➕':'plus','＋':'plus','📤':'export','🧹':'broom','🗑':'trash','🗑️':'trash','🚫':'block','✅':'check','⚠️':'alert','⚠':'alert','📌':'pin','🌍':'globe','📊':'poll','📞':'phone','🎥':'video','📹':'video','🎬':'film','⭕':'round','🔍':'search','↩️':'reply','↩':'reply','📋':'copy','↗️':'share','↗':'share','✏️':'edit','✏':'edit','💬':'chat','🚪':'leave','🔗':'link','📄':'doc','ℹ️':'info','ℹ':'info','ⓘ':'info','🎤':'mic','🔊':'speaker','📷':'camera','📸':'camera','📢':'megaphone','🗂':'archive','🗄':'archive','📦':'archive','🌙':'moon','😀':'smile','🙂':'smile','⚙️':'gear','⚙':'gear','🛡':'shield','🛡️':'shield','📱':'device','❤️':'heart','📅':'calendar','🟢':'dot','🔑':'key','✨':'spark','👁':'eye','👁️':'eye','✕':'x','🔄':'spark','🌐':'globe','🎂':'cake','🎉':'party','🥳':'party','🕶':'glasses','🕶️':'glasses','🌀':'status','▶':'play','▶️':'play','🖼️':'image','🗄️':'archive','📞':'phone','🔕':'belloff','👋':'wave','🎙':'mic','🎙️':'mic','⭕':'round','📝':'edit'};
 const LEAD_EMO=/^\s*(\p{Extended_Pictographic}️?|[ⓘ＋])\s*/u;
 function swapIcons(root){
   if(!root||!root.querySelectorAll)return;
@@ -3023,6 +3034,22 @@ function swapIcons(root){
 }
 new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1){swapIcons(n);if(n.parentElement)swapIcons(n.parentElement)}}))).observe(document.body,{childList:true,subtree:true});
 setTimeout(()=>swapIcons(document.body),0);
+/* any other interface emoji (not in messages, posts, reactions or the emoji keyboard) becomes a drawn icon */
+const IC_SKIP='.ico,#panel,.rbar,.reacts,.popt,.pq,.bubble .txt,.ptitle,.pf-desc,.mtext,.msgtext,textarea,input,.stk,.astk,[data-noic],.sv-txt,.arc-t,.nm,.cname,.pf-name,.u-name';
+const IC_ANY=/\p{Extended_Pictographic}️?/u;
+const PV_OK=/^(Звонок|Видеозвонок|Видеосообщение|Видео|Голосовое сообщение|Фото|Отменённый звонок|Пропущенный звонок|Входящий звонок|Исходящий звонок)/;
+function swapIcons2(root){if(!root||!root.querySelectorAll)return;const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);const todo=[];let n;
+  while(n=w.nextNode()){const v=n.nodeValue;if(!v||!IC_ANY.test(v))continue;const p=n.parentElement;if(!p||p.closest(IC_SKIP)||p.closest('.lic,.hasuic'))continue;todo.push(n)}
+  todo.forEach(n=>{const p=n.parentElement;if(!p)return;const v=n.nodeValue;
+    const lead=v.match(/^(\s*)(\p{Extended_Pictographic}️?)(\s*)/u);
+    if(lead&&EMO2IC[lead[2]]){const rest=v.slice(lead[0].length);if(p.closest('.pv')&&!PV_OK.test(rest)&&!['📊','🖼','🖼️','🎤','📞','🎥','⭕','🎬'].includes(lead[2]))return;if(p.closest('.bubble')&&!p.closest('.meta,.callb,.sys,.views,.ce-ic'))return;
+      const sp=document.createElement('span');sp.className='lic gx'+(rest.trim()?'':' solo');sp.innerHTML=UIC[EMO2IC[lead[2]]];p.insertBefore(sp,n);n.nodeValue=(rest.trim()&&lead[1]?' ':'')+rest;if(rest.trim())n.nodeValue=' '+rest.replace(/^\s+/,'');return}
+    if(p.closest('.bubble'))return;
+    const tail=v.match(/\s*(\p{Extended_Pictographic}️?)\s*$/u);if(tail&&v.trim().length>tail[0].trim().length+1&&!p.closest('.pv')){const k=EMO2IC[tail[1]];n.nodeValue=v.slice(0,v.length-tail[0].length);if(k){const sp=document.createElement('span');sp.className='lic gx';sp.innerHTML=UIC[k];p.insertBefore(sp,n.nextSibling)}}
+  })}
+new MutationObserver(ms=>{for(const m of ms){if(m.type==='childList')m.addedNodes.forEach(x=>{if(x.nodeType===1)swapIcons2(x);else if(x.nodeType===3&&x.parentElement)swapIcons2(x.parentElement)});else if(m.type==='characterData'&&m.target.parentElement)swapIcons2(m.target.parentElement)}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+setTimeout(()=>swapIcons2(document.body),50);
+
 
 /* ===== animated sticker packs (10 each, drawn here) ===== */
 const ASTK_PACKS=[
@@ -3779,6 +3806,7 @@ const UNIT_L={en:['B','KB','MB','GB','pcs'],ar:['ب','ك.ب','م.ب','ج.ب','ع
 const EXTRA_L={'НОВОСТИ':['NEWS','الأخبار','НАВІНЫ','NOTÍCIES','新闻','ACTUALITÉS','חדשות','VESTI','WIADOMOŚCI','NYHETER'],
 'На iPhone значок на экране «Домой» меняется так: удалите старый значок и добавьте снова — Safari → «Поделиться» → «На экран „Домой“». Новый значок будет с выбранной иконкой.':['On iPhone, to change the Home Screen icon delete the old one and add it again: Safari → Share → Add to Home Screen.','على iPhone احذف الأيقونة القديمة وأضفها مجددًا: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.','На iPhone выдаліце стары значок і дадайце зноў: Safari → «Падзяліцца» → «На экран Дадому».','A l’iPhone, esborra la icona antiga i torna-la a afegir: Safari → Comparteix → Afegeix a la pantalla d’inici.','在 iPhone 上删除旧图标后重新添加：Safari → 分享 → 添加到主屏幕。','Sur iPhone, supprimez l’ancienne icône et ajoutez-la à nouveau : Safari → Partager → Sur l’écran d’accueil.','ב־iPhone מחקו את הסמל הישן והוסיפו שוב: Safari ← שיתוף ← הוספה למסך הבית.','Na iPhone-u obrišite staru ikonicu i dodajte ponovo: Safari → Deli → Dodaj na početni ekran.','Na iPhonie usuń starą ikonę i dodaj ponownie: Safari → Udostępnij → Do ekranu początkowego.','På iPhone: ta bort den gamla ikonen och lägg till igen: Safari → Dela → Lägg till på hemskärmen.']};
 Object.entries(EXTRA_L).forEach(([k,v])=>I18N_MAP.set(k,v));
+{const strip=x=>x.replace(/^\s*(\p{Extended_Pictographic}️?|[▶✓])\s*/u,'').replace(/\s*\p{Extended_Pictographic}️?\s*$/u,'').trim();[...I18N_MAP.entries()].forEach(([k,v])=>{const k2=strip(k);if(k2&&k2!==k&&!I18N_MAP.has(k2))I18N_MAP.set(k2,v.map(strip))})}
 function trDyn2(t){const L=lang();let r;
   const wd='пн вт ср чт пт сб вс'.split(' ');if(wd.includes(t)&&WD_L[L])return WD_L[L].split(' ')[wd.indexOf(t)];
   if(r=t.match(/^([\d.,]+) (Б|КБ|МБ|ГБ|шт\.)$/)){const u=UNIT_L[L]||UNIT_L.en;return r[1]+' '+u[['Б','КБ','МБ','ГБ','шт.'].indexOf(r[2])]}
@@ -3805,6 +3833,86 @@ function startI18n(){if(trObs)return;trObs=new MutationObserver(ms=>{if(trBusy||
 function openLanguage(){const cur=lang();
   openSheet('Язык',`<div class="grp">${LANGS.map(([c,n])=>`<div class="r lang-r" data-l="${c}" data-notr><span class="lang-n">${n}</span>${c===cur?'<span class="v" style="color:var(--accent,#2ea6ff);font-size:20px">✓</span>':''}</div>`).join('')}</div>`,sh=>{
    sh.querySelectorAll('.lang-r').forEach(r=>r.onclick=()=>{S.lang=r.dataset.l;if(S.lang!=='ru')S.langWas=1;save();closePopups();renderMain();setTimeout(applyLang,50)})})}
+
+/* ===== notifications: incoming calls and messages, also when the app is closed (Web Push) ===== */
+const VAPID_PUB='BFZsJU76L5T9zY0fWJALASHgHYIi43dAeTGvCIjXxHVNOiSe2wZzktsRye6OG7-JMfg10EpI_WtY7KViIHHyuRY';
+let PUSH_URL='';fetch('push.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.url)PUSH_URL=j.url}).catch(()=>{});
+const b64uE=b=>{let s='';new Uint8Array(b).forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const b64uD=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
+const cat=(...a)=>{const o=new Uint8Array(a.reduce((n,x)=>n+x.length,0));let i=0;a.forEach(x=>{o.set(x,i);i+=x.length});return o};
+async function hkdf(salt,ikm,info,len){const k=await crypto.subtle.importKey('raw',ikm,'HKDF',false,['deriveBits']);return new Uint8Array(await crypto.subtle.deriveBits({name:'HKDF',hash:'SHA-256',salt,info},k,len*8))}
+/* RFC 8291 (aes128gcm) — the payload is encrypted here, so the relay server never sees the text */
+async function wpEncrypt(sub,obj){const te=new TextEncoder();const ua=b64uD(sub.keys.p256dh),auth=b64uD(sub.keys.auth);
+  const kp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);const as=new Uint8Array(await crypto.subtle.exportKey('raw',kp.publicKey));
+  const uaKey=await crypto.subtle.importKey('raw',ua,{name:'ECDH',namedCurve:'P-256'},false,[]);
+  const ecdh=new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:uaKey},kp.privateKey,256));
+  const ikm=await hkdf(auth,ecdh,cat(te.encode('WebPush: info\0'),ua,as),32);
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const cek=await hkdf(salt,ikm,te.encode('Content-Encoding: aes128gcm\0'),16),nonce=await hkdf(salt,ikm,te.encode('Content-Encoding: nonce\0'),12);
+  const key=await crypto.subtle.importKey('raw',cek,'AES-GCM',false,['encrypt']);
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},key,cat(te.encode(JSON.stringify(obj)),new Uint8Array([2]))));
+  return cat(salt,new Uint8Array([0,0,16,0]),new Uint8Array([65]),as,ct)}
+const PUSHC={};
+async function pushSubsOf(uid){const c=PUSHC[uid];if(c&&Date.now()-c.t<60000)return c.v;
+  try{const F=FBX();const d=await F.getDoc(F.doc(F.db,'users',uid));const v=Object.values((d.exists()&&d.data().push)||{}).filter(x=>x&&x.endpoint);PUSHC[uid]={t:Date.now(),v};return v}catch(_){return []}}
+async function sendPush(uids,payload,o){if(!PUSH_URL||!REAL||!RT.uid)return;o=o||{};
+  try{const msgs=[];for(const u of uids){if(!u||u===RT.uid)continue;for(const s of await pushSubsOf(u)){try{msgs.push({endpoint:s.endpoint,body:b64uE(await wpEncrypt(s,payload)),ttl:o.ttl||60,urgency:o.urgency||'high',topic:o.topic})}catch(_){}}}
+    if(msgs.length)fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).catch(()=>{})}catch(_){}}
+function chatPeers(c){if(c.type==='private')return [c.user];return (c.members||[]).filter(x=>x!==RT.uid).slice(0,30)}
+function myName(){return S.me.name||('@'+(S.me.username||''))}
+/* called after a message was written to the server */
+function pushForMessage(c,d,pv){if(!c||!c.remote||d.sig||d.part||d.themeSet!==undefined||d.call)return;
+  const peers=chatPeers(c).filter(u=>!(S.users[u]&&S.users[u].online&&c.type==='private'));if(!peers.length)return;
+  const inc=typeof incog==='function'&&incog();
+  const title=c.type==='private'?myName():(c.title||'Группа');
+  const body=inc?'Новое сообщение':(c.type==='private'?'':myName()+': ')+(pv||'Сообщение');
+  sendPush(peers,{t:'msg',title,body,chat:c.rid,tag:'m-'+c.rid},{ttl:3600,urgency:'normal'})}
+/* calls ring several times so the phone keeps sounding, then turn into "missed" */
+function pushForCall(c,id,video){if(!c||!c.remote||c.type!=='private')return;const who=myName();
+  const one=n=>{if(!CALL||CALL.callId!==id||!['ringing','calling'].includes(CALL.st))return;
+    sendPush([c.user],{t:'call',title:who,body:video?'Входящий видеозвонок':'Входящий звонок',chat:c.rid,call:id,tag:'c-'+id,n},{ttl:40,urgency:'high',topic:'call'})};
+  [0,7000,14000,21000,28000,36000].forEach((ms,i)=>setTimeout(()=>one(i),ms))}
+function pushCallEnded(c,K,res){if(!c||!c.remote||c.type!=='private'||K.dir!=='out'||res==='ok')return;
+  sendPush([c.user],{t:'end',title:myName(),body:'Пропущенный звонок',chat:c.rid,call:K.callId,tag:'c-'+K.callId},{ttl:86400,urgency:'normal',topic:'call'})}
+/* local notification while the app is open in the background (Android, computer) */
+async function localNotify(c,m){try{if(!('Notification' in window)||Notification.permission!=='granted'||!document.hidden||c.muted)return;
+  const reg=await navigator.serviceWorker?.getRegistration();const u=S.users[m.from]||{};
+  const title=c.type==='private'?(u.name||'Сообщение'):(c.title||'Группа');const body=(c.type==='private'?'':(u.name||'')+': ')+(m.text||'Новое сообщение');
+  const opt={body:body.slice(0,180),icon:'icon-192.png',badge:'icon-192.png',tag:'m-'+(c.rid||c.id),renotify:true,data:{chat:c.rid||c.id}};
+  if(reg)reg.showNotification(title,opt);else new Notification(title,opt)}catch(_){}}
+function isStandalone(){return navigator.standalone===true||matchMedia('(display-mode: standalone)').matches}
+function isIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
+function pushState(){if(!('Notification' in window)||!('serviceWorker' in navigator)||!window.PushManager)return 'none';return Notification.permission}
+async function enablePush(){
+  if(isIOS()&&!isStandalone()){toast('Сначала добавьте мессенджер на экран «Домой»: Поделиться → На экран «Домой». Потом откройте его оттуда.');return false}
+  if(pushState()==='none'){toast('Этот браузер не умеет уведомления. На iPhone нужна iOS 16.4 или новее.');return false}
+  let p=Notification.permission;if(p==='default')p=await Notification.requestPermission();
+  if(p!=='granted'){toast('Уведомления запрещены. Разрешите их в настройках телефона для мессенджера.');return false}
+  try{const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uD(VAPID_PUB)});
+    const j=sub.toJSON();S.pushOn=1;save();
+    if(REAL&&RT.uid){const F=FBX();const h='d'+(hash32(j.endpoint)>>>0).toString(36);const me=await F.getDoc(F.doc(F.db,'users',RT.uid));const cur=(me.exists()&&me.data().push)||{};
+      Object.keys(cur).forEach(k=>{if(cur[k]&&cur[k].endpoint===j.endpoint&&k!==h)delete cur[k]});cur[h]={endpoint:j.endpoint,keys:j.keys,t:Date.now()};
+      const ks=Object.keys(cur).sort((a,b)=>(cur[b].t||0)-(cur[a].t||0));ks.slice(4).forEach(k=>delete cur[k]);
+      await F.updateDoc(F.doc(F.db,'users',RT.uid),{push:cur});delete PUSHC[RT.uid]}
+    return true}catch(e){toast('Не удалось включить уведомления: '+(e&&e.message||e));return false}}
+async function disablePush(){try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){const ep=sub.endpoint;await sub.unsubscribe();
+  if(REAL&&RT.uid){const F=FBX();const me=await F.getDoc(F.doc(F.db,'users',RT.uid));const cur=(me.exists()&&me.data().push)||{};Object.keys(cur).forEach(k=>{if(cur[k]&&cur[k].endpoint===ep)delete cur[k]});await F.updateDoc(F.doc(F.db,'users',RT.uid),{push:cur})}}}catch(_){}S.pushOn=0;save()}
+function openNotifSettings(){const st=pushState();const on=st==='granted'&&S.pushOn;
+  const hint=isIOS()&&!isStandalone()?'<p class="pf-desc" style="color:#ff9500">На iPhone уведомления работают, только если мессенджер открыт с экрана «Домой». Safari → Поделиться → «На экран „Домой“», затем откройте значок.</p>':'';
+  openSheet('Уведомления',`<div class="pf-top"><div class="nt-big">${UIC.bell}</div><p class="pf-desc">Звонки и сообщения придут уведомлением со звуком — даже когда мессенджер закрыт и телефон заблокирован.</p>${hint}</div>
+   <div class="grp"><div class="r" id="ntSw">Уведомления<span class="sw ${on?'on':''}"></span></div>${on?'<div class="r" id="ntTest">Проверить уведомление</div>':''}</div>
+   <p class="pf-desc" style="padding:0 16px">${PUSH_URL?'':'Сервер уведомлений ещё не подключён: пока уведомления приходят, только когда мессенджер открыт в фоне.'}</p>`,sh=>{
+   sh.querySelector('#ntSw').onclick=async()=>{if(on)await disablePush();else if(!await enablePush())return;closePopups();renderMain();setTimeout(openNotifSettings,350)};
+   sh.querySelector('#ntTest')?.addEventListener('click',async()=>{toast('Заблокируйте телефон — через 5 секунд придёт уведомление');const subs=await(async()=>{delete PUSHC[RT.uid];return pushSubsOf(RT.uid)})();
+     if(PUSH_URL&&subs.length){setTimeout(async()=>{const msgs=[];for(const s of subs)msgs.push({endpoint:s.endpoint,body:b64uE(await wpEncrypt(s,{t:'msg',title:'Мессенджер',body:'Уведомления работают',tag:'test'})),ttl:60,urgency:'high'});fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).then(r=>r.json()).then(a=>{if(!a.every(x=>x===201||x===200))toast('Ответ сервера: '+a.join(', '))}).catch(e=>toast('Сервер уведомлений не отвечает'))},5000)}
+     else setTimeout(async()=>{const reg=await navigator.serviceWorker.getRegistration();reg&&reg.showNotification('Мессенджер',{body:'Уведомления работают',icon:'icon-192.png',tag:'test'})},5000)})})}
+/* opened from a notification */
+function openFromPush(rid){if(!rid)return;const go=(n)=>{const c=Object.values(S.chats).find(x=>x.rid===rid||x.id===rid);if(c){if(T.openChat!==c.id)openChat(c.id);return}if(n<40)setTimeout(()=>go(n+1),300)};go(0)}
+try{navigator.serviceWorker&&navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type==='open')openFromPush(d.chat)})}catch(_){}
+try{const q=new URLSearchParams(location.search);const r=q.get('open');if(r){history.replaceState(null,'',location.pathname);setTimeout(()=>openFromPush(r),800)}}catch(_){}
+/* re-save the subscription on start (the phone may rotate it) */
+setTimeout(()=>{if(S.pushOn&&pushState()==='granted'&&REAL)(function w(n){if(RT.uid)enablePush();else if(n<30)setTimeout(()=>w(n+1),1000)})(0)},3000);
 
 setTimeout(()=>{try{startI18n()}catch(e){console.error(e)}},200);
 function ensureFeeds(){
@@ -4202,10 +4310,10 @@ function watchMessages(c,attempt){
   attempt=attempt||0;const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(400));let first=true;
   RT.msgUnsubs[c.rid]=F.onSnapshot(q,snap=>{
     const hidden=new Set((S.hidden&&S.hidden[c.id])||[]);
-    const docs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<30000)handleSig(c,d,x);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
+    const docs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<55000)handleSig(c,d,x);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
     const known=new Set(c.messages.map(m=>m.id));
     const list=docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
-    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys))playRing(c.id);first=false;
+    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{localNotify(c,list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop())}catch(_){}}first=false;
     list.sort((a,b)=>a.time-b.time);
     {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
     c.messages=list.concat(c.pending||[]);
@@ -4254,6 +4362,7 @@ async function remoteWrite(c,d){
     await F.setDoc(ref,d);
     const pv=d.call?(d.call.video?'🎥 Видеозвонок':'📞 Звонок'):d.video?(d.video.round?'⭕ Видеосообщение':'🎬 Видео'):d.voice?'🎤 Голосовое сообщение':d.poll?'📊 '+d.poll.q:d.img?'🖼 Фото':d.sticker?'Стикер':d.spoiler?'▒▒▒▒▒▒':(d.text||'').slice(0,120);
     F.updateDoc(F.doc(F.db,'chats',c.rid),{lastMsg:{text:pv,from:RT.uid,time:d.time},updatedAt:d.time,[`typing.${RT.uid}`]:0}).catch(()=>{});
+    try{pushForMessage(c,d,pv)}catch(_){}
     return true;
   }catch(e){toast(e&&e.code==='permission-denied'&&c.type==='private'?'Сообщение не доставлено: вас заблокировали':fbErr(e));return false}
 }
