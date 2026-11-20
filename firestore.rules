@@ -81,6 +81,12 @@ service cloud.firestore {
       allow create, update, delete: if signedIn() && uid() in grp().admins;
     }
 
+    // Statuses (24 h): only the people the author writes to can see them.
+    match /statuses/{userId} {
+      allow read: if signedIn() && (uid() == userId || uid() in resource.data.get('aud', []));
+      allow create, update, delete: if signedIn() && uid() == userId;
+    }
+
     // Reports: anyone signed in can file one; nobody can read them from the app.
     match /reports/{reportId} {
       allow create: if signedIn() && request.resource.data.by == uid();
