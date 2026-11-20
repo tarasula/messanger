@@ -1486,6 +1486,7 @@ function sendMessage(o,when){
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
   if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();c.lastWait=postWait(c);setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);{if((c.subs||0)>=10000&&!c.peakAt)c.peakAt=Date.now();const add=c.peakAt?Math.floor(Math.random()*4):Math.round((20+Math.random()*30)*(1+(c.subs||0)/500));let left=add;if(!add)return;const step=()=>{const k=Math.min(left,Math.max(2,Math.ceil(add/12))+Math.floor(Math.random()*4));c.subs=(c.subs||0)+k;c.subGrow=(c.subGrow||0)+k;left-=k;save();if(T.openChat===c.id)updateHeadStatus();if(left>0)setTimeout(step,250+Math.random()*300);else pubSyncMeta(c,true)};setTimeout(step,300)}}
   if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
+  else if(m.status==='sent'&&c.type==='channel'&&c.owner)try{pushForChannelPost(c,m)}catch(_){}
   if(m.status==='sent')afterSent(c);
 }
 function afterSent(c){
@@ -2912,7 +2913,7 @@ async function unpublishChannel(c){
     const ps=await F.getDocs(F.collection(F.db,'pubchannels',c.id,'posts'));for(const d of ps.docs)await F.deleteDoc(d.ref);
     await F.deleteDoc(F.doc(F.db,'pubchannels',c.id))}catch(_){}
 }
-function pubPost(c,m){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
+function pubPost(c,m){try{if(c&&c.owner)pushForChannelPost(c,m)}catch(_){}if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
 function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
 function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<8000)return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
   {const F2=FBX();c.messages.filter(m=>!m.sys).slice(-10).forEach(m=>F2.setDoc(F2.doc(F2.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{}))}
@@ -2949,11 +2950,13 @@ function mapPost(c,doc,prev){
 function watchPub(c){
   if(!c.pubRid||PUB.unsub[c.id]||!pubReady())return;const F=FBX();
   if(c.legacyOwner){PUB.unsub[c.id]=F.onSnapshot(F.doc(F.db,'users',c.legacyOwner),d=>{const e=d.exists()&&d.data().pubch&&d.data().pubch[c.pubRid];if(!e){c.gone=true;return}
-      ensurePubChat(c.pubRid,e);const old=new Map(c.messages.map(m=>[m.id,m]));c.messages=(e.posts||[]).map(p=>mapPost(c,{id:p.id,data:()=>p},old.get(p.id))).sort((a,b)=>a.time-b.time);
+      ensurePubChat(c.pubRid,e);const old=new Map(c.messages.map(m=>[m.id,m]));const had=old.size>0;c.messages=(e.posts||[]).map(p=>mapPost(c,{id:p.id,data:()=>p},old.get(p.id))).sort((a,b)=>a.time-b.time);
+      if(had){const nw=c.messages.filter(m=>!old.has(m.id)&&!m.sys).pop();if(nw&&T.openChat!==c.id)notifyPost(c,nw)}
       save();if(T.openChat===c.id){renderChatHead();updateHeadStatus();renderMessages()}renderListIfVisible()},()=>{});return}
   const u1=F.onSnapshot(F.doc(F.db,'pubchannels',c.pubRid),d=>{if(!d.exists()){c.gone=true;if(T.openChat===c.id)renderChatHead();return}ensurePubChat(c.pubRid,d.data());save();if(T.openChat===c.id){renderChatHead();updateHeadStatus()}renderListIfVisible()},()=>{});
   const u2=F.onSnapshot(F.query(F.collection(F.db,'pubchannels',c.pubRid,'posts'),F.orderBy('time','desc'),F.limit(100)),snap=>{
-    const old=new Map(c.messages.map(m=>[m.id,m]));c.messages=snap.docs.map(d=>mapPost(c,d,old.get(d.id))).sort((a,b)=>a.time-b.time);
+    const old=new Map(c.messages.map(m=>[m.id,m]));const had=c.messages.length>0||c._seenPub;c._seenPub=1;c.messages=snap.docs.map(d=>mapPost(c,d,old.get(d.id))).sort((a,b)=>a.time-b.time);
+    if(had){const nw=c.messages.filter(m=>!old.has(m.id)&&!m.sys).pop();if(nw&&T.openChat!==c.id)notifyPost(c,nw)}
     save();if(T.openChat===c.id)renderMessages();renderListIfVisible()},()=>{});
   PUB.unsub[c.id]=()=>{u1();u2()};
 }
@@ -3903,11 +3906,16 @@ async function wpEncrypt(sub,obj){const te=new TextEncoder();const ua=b64uD(sub.
   const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},key,cat(te.encode(JSON.stringify(obj)),new Uint8Array([2]))));
   return cat(salt,new Uint8Array([0,0,16,0]),new Uint8Array([65]),as,ct)}
 const PUSHC={};
-async function pushSubsOf(uid){const c=PUSHC[uid];if(c&&Date.now()-c.t<60000)return c.v;
-  try{const F=FBX();const d=await F.getDoc(F.doc(F.db,'users',uid));const v=Object.values((d.exists()&&d.data().push)||{}).filter(x=>x&&x.endpoint);PUSHC[uid]={t:Date.now(),v};return v}catch(_){return []}}
+function ntf(){return Object.assign({dm:1,gr:1,ch:1,news:1},S.ntf||{})}
+function subsFromDoc(x){return Object.values((x&&x.push)||{}).filter(y=>y&&y.endpoint)}
+function wantsPush(x,kind,rid){if(!x)return false;const n=Object.assign({dm:1,gr:1,ch:1,news:1},x.ntf||{});if(kind&&n[kind]===0)return false;if(rid&&(x.nmute||[]).includes(rid))return false;return true}
+async function pushDocOf(uid){const c=PUSHC[uid];if(c&&Date.now()-c.t<60000)return c.x;
+  try{const F=FBX();const d=await F.getDoc(F.doc(F.db,'users',uid));const x=d.exists()?d.data():null;PUSHC[uid]={t:Date.now(),x};return x}catch(_){return null}}
+async function pushSubsOf(uid){return subsFromDoc(await pushDocOf(uid))}
+async function postPush(msgs){for(let i=0;i<msgs.length;i+=10)fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs.slice(i,i+10))}).catch(()=>{})}
 async function sendPush(uids,payload,o){if(!PUSH_URL||!REAL||!RT.uid)return;o=o||{};
-  try{const msgs=[];for(const u of uids){if(!u||u===RT.uid)continue;for(const s of await pushSubsOf(u)){try{msgs.push({endpoint:s.endpoint,body:b64uE(await wpEncrypt(s,payload)),ttl:o.ttl||60,urgency:o.urgency||'high',topic:o.topic})}catch(_){}}}
-    if(msgs.length)fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).catch(()=>{})}catch(_){}}
+  try{const msgs=[];for(const u of uids){if(!u||u===RT.uid)continue;const x=o.docs&&o.docs[u]||await pushDocOf(u);if(o.kind&&!wantsPush(x,o.kind,o.rid))continue;for(const s of subsFromDoc(x)){try{msgs.push({endpoint:s.endpoint,body:b64uE(await wpEncrypt(s,payload)),ttl:o.ttl||60,urgency:o.urgency||'high',topic:o.topic})}catch(_){}}}
+    if(msgs.length)postPush(msgs)}catch(_){}}
 function chatPeers(c){if(c.type==='private')return [c.user];return (c.members||[]).filter(x=>x!==RT.uid).slice(0,30)}
 function myName(){return S.me.name||('@'+(S.me.username||''))}
 /* called after a message was written to the server */
@@ -3916,11 +3924,30 @@ function pushForMessage(c,d,pv){if(!c||!c.remote||d.sig||d.part||d.themeSet!==un
   const inc=typeof incog==='function'&&incog();
   const title=c.type==='private'?myName():(c.title||'Группа');
   const body=inc?'Новое сообщение':(c.type==='private'?'':myName()+': ')+(pv||'Сообщение');
-  sendPush(peers,{t:'msg',title,body,chat:c.rid,tag:'m-'+c.rid},{ttl:3600,urgency:'normal'})}
+  sendPush(peers,{t:'msg',title,body,chat:c.rid,tag:'m-'+c.rid},{ttl:3600,urgency:'normal',kind:c.type==='private'?'dm':'gr',rid:c.rid})}
+function postText(m){return m.title||m.text||(m.voice?'Голосовое сообщение':m.video?(m.video.round?'Видеосообщение':'Видео'):m.img?'Фото':m.poll?'Опрос: '+(m.poll.q||''):'Новый пост')}
+async function pushForChannelPost(c,m){if(!PUSH_URL||!REAL||!RT.uid||!c||!c.owner)return;
+  try{const F=FBX();const q=await F.getDocs(F.query(F.collection(F.db,'users'),F.where('follow','array-contains',c.id),F.limit(300)));const docs={},uids=[];
+    q.docs.forEach(d=>{if(d.id!==RT.uid){docs[d.id]=d.data();uids.push(d.id)}});if(!uids.length)return;
+    sendPush(uids,{t:'msg',title:c.title||'Канал',body:String(postText(m)).slice(0,160),chat:c.id,tag:'ch-'+c.id},{ttl:6*3600,urgency:'normal',kind:'ch',rid:c.id,docs})}catch(_){}}
+/* what this phone wants to be notified about, kept in its own profile so senders can respect it */
+let NTF_LAST='';
+function syncNtfProfile(){if(!REAL||!RT.uid)return;const follow=[],nmute=[];
+  Object.values(S.chats).forEach(c=>{const rid=c.pubRid||c.rid;if(c.type==='channel'&&c.subscribed&&c.pubRid)follow.push(c.pubRid);if(c.muted&&rid)nmute.push(rid)});
+  const v={follow:[...new Set(follow)].slice(0,300),nmute:[...new Set(nmute)].slice(0,300),ntf:ntf()};const j=JSON.stringify(v);if(j===NTF_LAST)return;NTF_LAST=j;
+  const F=FBX();F.updateDoc(F.doc(F.db,'users',RT.uid),v).catch(()=>{NTF_LAST=''});regNews()}
+setInterval(syncNtfProfile,8000);
+/* news when the app is closed: the notification server checks the news itself */
+async function regNews(){if(!PUSH_URL||!S.pushOn||pushState()!=='granted')return;try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(!sub)return;
+  fetch(PUSH_URL.replace(/\/$/,'')+'/reg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sub:sub.toJSON(),news:ntf().news?1:0})}).catch(()=>{})}catch(_){}}
+/* new posts in channels while the app is open (fan channels, news, other people's channels) */
+const LPOST={t:0};
+function notifyPost(c,m){try{if(!c||!m||c.muted||!c.subscribed||c.owner)return;const n=ntf();if(c.news?!n.news:!n.ch)return;if(Date.now()-(m.time||0)>10*60000)return;
+  if(Date.now()-LPOST.t<20000)return;LPOST.t=Date.now();inAppBanner(c,{...m,text:String(postText(m)).slice(0,140)});localNotify(c,{...m,text:String(postText(m)).slice(0,160)})}catch(_){}}
 /* calls ring several times so the phone keeps sounding, then turn into "missed" */
 function pushForCall(c,id,video){if(!c||!c.remote||c.type!=='private')return;const who=myName();
   const one=n=>{if(!CALL||CALL.callId!==id||!['ringing','calling'].includes(CALL.st))return;
-    sendPush([c.user],{t:'call',title:who,body:video?'Входящий видеозвонок':'Входящий звонок',chat:c.rid,call:id,tag:'c-'+id,n},{ttl:40,urgency:'high',topic:'call'})};
+    sendPush([c.user],{t:'call',title:who,body:video?'Входящий видеозвонок':'Входящий звонок',chat:c.rid,call:id,tag:'c-'+id,n},{ttl:40,urgency:'high',topic:'call',kind:'dm',rid:c.rid})};
   [0,7000,14000,21000,28000,36000].forEach((ms,i)=>setTimeout(()=>one(i),ms))}
 function pushCallEnded(c,K,res){if(!c||!c.remote||c.type!=='private'||K.dir!=='out'||res==='ok')return;
   sendPush([c.user],{t:'end',title:myName(),body:'Пропущенный звонок',chat:c.rid,call:K.callId,tag:'c-'+K.callId},{ttl:86400,urgency:'normal',topic:'call'})}
@@ -3952,19 +3979,22 @@ function openNotifSettings(){const st=pushState();const on=st==='granted'&&S.pus
   const hint=isIOS()&&!isStandalone()?'<p class="pf-desc" style="color:#ff9500">На iPhone уведомления работают, только если мессенджер открыт с экрана «Домой». Safari → Поделиться → «На экран „Домой“», затем откройте значок.</p>':'';
   openSheet('Уведомления',`<div class="pf-top"><div class="nt-big">${UIC.bell}</div><p class="pf-desc">Звонки и сообщения придут уведомлением со звуком — даже когда мессенджер закрыт и телефон заблокирован.</p>${hint}</div>
    <div class="grp"><div class="r" id="ntSw">Уведомления<span class="sw ${on?'on':''}"></span></div>${on?'<div class="r" id="ntTest">Проверить уведомление</div>':''}</div>
+   <div class="sec-h">Присылать</div><div class="grp">${[['dm','Личные сообщения и звонки'],['gr','Группы'],['ch','Каналы'],['news','Новости']].map(([k,l])=>`<div class="r nt-k" data-k="${k}">${l}<span class="sw ${ntf()[k]?'on':''}"></span></div>`).join('')}</div>
+   <p class="pf-desc" style="padding:0 16px">Отдельный чат или канал можно заглушить: «Выкл. звук» в его меню — уведомлений от него не будет.</p>
    <p class="pf-desc" style="padding:0 16px">${PUSH_URL?'':'Сервер уведомлений ещё не подключён: пока уведомления приходят, только когда мессенджер открыт в фоне.'}</p>`,sh=>{
+   sh.querySelectorAll('.nt-k').forEach(r=>r.onclick=()=>{const k=r.dataset.k;S.ntf=ntf();S.ntf[k]=S.ntf[k]?0:1;save();r.querySelector('.sw').classList.toggle('on',!!S.ntf[k]);syncNtfProfile()});
    sh.querySelector('#ntSw').onclick=async()=>{if(on)await disablePush();else if(!await enablePush())return;closePopups();renderMain();setTimeout(openNotifSettings,350)};
    sh.querySelector('#ntTest')?.addEventListener('click',async()=>{toast('Заблокируйте телефон — через 5 секунд придёт уведомление');const subs=await(async()=>{delete PUSHC[RT.uid];return pushSubsOf(RT.uid)})();
      if(PUSH_URL&&subs.length){setTimeout(async()=>{const msgs=[];for(const s of subs)msgs.push({endpoint:s.endpoint,body:b64uE(await wpEncrypt(s,{t:'msg',title:'Мессенджер',body:'Уведомления работают',tag:'test'})),ttl:60,urgency:'high'});fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).then(r=>r.json()).then(a=>{if(!a.every(x=>x===201||x===200))toast('Ответ сервера: '+a.join(', '))}).catch(e=>toast('Сервер уведомлений не отвечает'))},5000)}
      else setTimeout(async()=>{const reg=await navigator.serviceWorker.getRegistration();reg&&reg.showNotification('Мессенджер',{body:'Уведомления работают',icon:'icon-192.png',tag:'test'})},5000)})})}
 /* opened from a notification */
-function openFromPush(rid){if(!rid)return;const go=(n)=>{const c=Object.values(S.chats).find(x=>x.rid===rid||x.id===rid);if(c){if(T.openChat!==c.id)openChat(c.id);return}if(n<40)setTimeout(()=>go(n+1),300)};go(0)}
+function openFromPush(rid){if(!rid)return;const go=(n)=>{const c=Object.values(S.chats).find(x=>x.rid===rid||x.id===rid||x.pubRid===rid);if(c){if(T.openChat!==c.id)openChat(c.id);return}if(n<40)setTimeout(()=>go(n+1),300)};go(0)}
 try{navigator.serviceWorker&&navigator.serviceWorker.addEventListener('message',async e=>{const d=e.data||{};if(d.type==='open')openFromPush(d.chat);
   if(d.type==='push'&&d.d&&d.d.t==='msg'&&!document.hidden){try{const reg=await navigator.serviceWorker.getRegistration();(await reg.getNotifications({tag:d.d.tag})).forEach(n=>n.close())}catch(_){}}})}catch(_){}
 /* banner at the top when a message comes into another chat while the app is open */
 function inAppBanner(c,m){try{if(document.hidden||!c||c.muted||T.openChat===c.id||!m)return;const u=S.users[m.from]||{};
   const name=c.type==='private'?(u.name||'Сообщение'):(c.title||'Группа');
-  const txt=m.text?m.text:m.voice?'Голосовое сообщение':m.video?(m.video.round?'Видеосообщение':'Видео'):m.img?'Фото':m.sticker?'Стикер':m.poll?'Опрос':'Новое сообщение';
+  const txt=m.title?m.title:m.text?m.text:m.voice?'Голосовое сообщение':m.video?(m.video.round?'Видеосообщение':'Видео'):m.img?'Фото':m.sticker?'Стикер':m.poll?'Опрос':'Новое сообщение';
   document.querySelectorAll('.iab').forEach(x=>x.remove());const b=document.createElement('button');b.className='iab';
   const av=c.type==='private'?u.avatar:c.avatar;const col=(c.type==='private'?u.color:c.color)||'#65aadd';
   b.innerHTML=`<span class="iab-av" style="background:${av?`center/cover url(${av})`:col}">${av?'':esc((name||'?')[0])}</span><span class="iab-t"><b>${esc(name)}</b><span>${esc((c.type!=='private'&&u.name?u.name+': ':'')+txt).slice(0,120)}</span></span>`;
@@ -4002,7 +4032,7 @@ function feedTick(initial){
         if(typeof it!=='string'){const tot=NOBOTS?0:Math.round(views*(.3+R()*.4));const w=it.opts.map(()=>.2+R());const sw=w.reduce((a,b)=>a+b,0);m.poll={q:it.poll,opts:it.opts.map((t,i)=>({t,v:Math.round(tot*w[i]/sw)})),voted:-1}}
         if(!NOBOTS){const E0=['❤️','🔥','😂','😮','👍','🤯','😢','🎉'];const inT=E0.filter(e=>m.text.includes(e));const E=inT.length>=2?inT:E0;const n=inT.length>=2?inT.length:2+Math.floor(R()*3);for(let i=0;i<n;i++){const e=inT.length>=2?E[i]:E[Math.floor(R()*E.length)];m.reactions[e]={n:(m.reactions[e]?.n||0)+Math.floor(5+R()*c.subs*.004*(t-pt>HOUR?1:.3)),mine:false}}}
         c.messages.push(m);if(c.messages.length>400)c.messages.splice(0,c.messages.length-400);
-        if(T.openChat!==c.id&&!initial)c.unread=(c.unread||0)+1;
+        if(T.openChat!==c.id&&!initial){c.unread=(c.unread||0)+1;if(t-pt<5*60000)notifyPost(c,m)}
         if(initial&&t-pt<DAY&&T.openChat!==c.id)c.unread=Math.min(3,(c.unread||0)+1);
         any=true;
       }
@@ -4191,7 +4221,7 @@ function applyNews(initial){
     if(c.messages.some(m=>m.id===mid))return;
     const R=rng(hash32(mid));
     c.messages.push({id:mid,from:c.id,title:String(x.title||'').slice(0,200),text:String(x.text||'').slice(0,1200),link:x.url&&/^https?:\/\//.test(x.url)?{url:String(x.url),src:String(x.source||'Источник').slice(0,60)}:null,time:x.time,status:'read',reactions:{},views:Math.round(c.subs*(.2+R()*.4))});
-    if(T.openChat!==c.id&&(!initial||t-x.time<DAY))c.unread=(c.unread||0)+1;any=true});
+    if(T.openChat!==c.id&&(!initial||t-x.time<DAY))c.unread=(c.unread||0)+1;if(!initial&&T.openChat!==c.id)notifyPost(c,c.messages[c.messages.length-1]);any=true});
   Object.values(S.chats).filter(c=>c.news).forEach(c=>{c.messages.sort((a,b)=>a.time-b.time);if(c.messages.length>200)c.messages.splice(0,c.messages.length-200)});
   if(any){save();if(T.openChat&&S.chats[T.openChat]?.news)renderMessages();renderListIfVisible()}
 }
@@ -4376,7 +4406,7 @@ function watchMessages(c,attempt){
      sigs.forEach(([d,x])=>{if(x.sig.t==='offer'&&ended.has(x.sig.id)){RTCX.seen.add(d.id);return}if(!first)handleSig(c,d,x);else if(x.sig.t==='offer'&&Date.now()-(x.time||0)<55000)handleSig(c,d,x);else RTCX.seen.add(d.id)})}
     const known=new Set(c.messages.map(m=>m.id));
     const list=docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
-    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();localNotify(c,nm);inAppBanner(c,nm)}catch(_){}}first=false;
+    if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();if(ntf()[c.type==='private'?'dm':'gr']){localNotify(c,nm);inAppBanner(c,nm)}}catch(_){}}first=false;
     list.sort((a,b)=>a.time-b.time);
     {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
     c.messages=list.concat(c.pending||[]);
