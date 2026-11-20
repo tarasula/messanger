@@ -2688,7 +2688,7 @@ async function legacySearch(q){const F=FBX();const lo=q.toLowerCase();const norm
 
 function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
 function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
-function publishChannel(c){if(legacy()){c.public=true;save();return legacyWriteChannels().then(ok=>{if(!ok){c.public=false;save()}return ok})}
+function publishChannel(c){if(legacy()){$('#rulesBar')?.remove();c.public=true;save();return legacyWriteChannels().then(ok=>{if(!ok){c.public=false;save()}return ok})}
   return publishChannel0(c)}
 async function publishChannel0(c){
   if(!pubReady()){toast('Войдите в аккаунт, чтобы сделать канал публичным');return false}
@@ -2798,7 +2798,7 @@ function openPrivacy(c){
 }
 function rulesCheck(){if(!REAL||!RT.uid||RT.rulesChecked)return;RT.rulesChecked=1;const F=FBX();
   F.getDoc(F.doc(F.db,'statuses',RT.uid)).then(()=>{RT.oldRules=false;$('#rulesBar')?.remove();watchStatuses()}).catch(e=>{if(e&&e.code==='permission-denied'){RT.oldRules=true;showRulesBar()}watchStatuses();restorePub()})}
-function showRulesBar(){if($('#rulesBar')||!$('#mainTop'))return;const b=document.createElement('button');b.id='rulesBar';b.className='rulesbar';b.innerHTML='ℹ️ Каналы и статусы работают. Для видео в статусах и счётчика живых подписчиков обновите правила базы — нажмите';$('#mainTop').appendChild(b);
+function showRulesBar(){return;if($('#rulesBar')||!$('#mainTop'))return;const b=document.createElement('button');b.id='rulesBar';b.className='rulesbar';b.innerHTML='ℹ️ Каналы и статусы работают. Для видео в статусах и счётчика живых подписчиков обновите правила базы — нажмите';$('#mainTop').appendChild(b);
   b.onclick=()=>openSheet('Обновить правила базы',`<div class="pf-top"><p class="pf-desc" style="text-align:left">Сервер пока не пускает публичные каналы и статусы. Это настраивается один раз:<br><br>1. Откройте <b>console.firebase.google.com</b> → проект <b>messanger-aab05</b>.<br>2. Слева <b>Firestore Database</b> → вкладка <b>Rules</b>.<br>3. Удалите всё и вставьте текст из файла <b>firestore-rules.txt</b>, который прислал Claude.<br>4. Нажмите <b>Publish</b> и подождите минуту.<br>5. Закройте и откройте мессенджер.</p></div>`)}
 setInterval(()=>{if(RT.uid&&!RT.rulesChecked)rulesCheck()},3000);
 function restorePub(){if(!pubReady())return;PUB.checked=PUB.checked||{};if(legacy()&&!PUB.legDone&&Object.values(S.chats).some(c=>c.owner&&c.public)){PUB.legDone=1;legacyWriteChannels()}Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public){watchOwnPub(c);if(!PUB.checked[c.id]&&RT.oldRules===false){PUB.checked[c.id]=1;const F=FBX();F.getDoc(F.doc(F.db,'pubchannels',c.id)).then(d=>{if(!d.exists())publishChannel(c);else pubSyncMeta(c,true)}).catch(()=>{})}}})}
@@ -3069,6 +3069,8 @@ function openStatusComposer(){
 async function uploadStatusMedia(m,onp){
   const fid=uid()+uid();const v={fid,dur:Math.round(m.dur||0),poster:m.poster||null,mime:m.mime||'video/mp4',round:m.kind==='round'};
   if(!REAL){await IDB.put('v:'+fid,m.blob);VURL[fid]=URL.createObjectURL(m.blob);v.n=0;return v}
+  if(legacy()){if(m.blob.size>330000){toast('Без обновления правил базы видео в статусе — до 330 КБ (примерно 5–8 секунд). Запишите покороче');return null}
+    v.n=0;v.inline=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(m.blob)});IDB.put('v:'+fid,m.blob);VURL[fid]=URL.createObjectURL(m.blob);return v}
   if(m.blob.size>12*1048576){toast('Видео слишком большое для статуса');return null}
   const F=FBX();const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]||'');fr.readAsDataURL(m.blob)});
   const n=Math.ceil(b64.length/CHUNK);v.n=n;
@@ -3077,7 +3079,7 @@ async function uploadStatusMedia(m,onp){
   IDB.put('v:'+fid,m.blob);VURL[fid]=URL.createObjectURL(m.blob);return v;
 }
 async function statusVideoURL(owner,v){
-  if(VURL[v.fid])return VURL[v.fid];const b=await IDB.get('v:'+v.fid);if(b)return VURL[v.fid]=URL.createObjectURL(b);
+  if(VURL[v.fid])return VURL[v.fid];if(v.inline)return v.inline;const b=await IDB.get('v:'+v.fid);if(b)return VURL[v.fid]=URL.createObjectURL(b);
   if(!REAL||!v.n)return null;const F=FBX();const parts=[];
   for(let i=0;i<v.n;i++){const d=await F.getDoc(F.doc(F.db,'statuses',owner,'media',v.fid+'_'+i));if(!d.exists())return null;const s2=atob(d.data().d);const a=new Uint8Array(s2.length);for(let j=0;j<s2.length;j++)a[j]=s2.charCodeAt(j);parts.push(a)}
   const blob=new Blob(parts,{type:v.mime||'video/mp4'});IDB.put('v:'+v.fid,blob);return VURL[v.fid]=URL.createObjectURL(blob);
@@ -3088,7 +3090,7 @@ async function publishStatus(it){
   // keep the card small enough for the server (about 900 KB)
   while(JSON.stringify(items).length>880000&&items.length>1)items=items.slice(1);
   if(JSON.stringify(items).length>880000){toast('Фото слишком большое для статуса');return false}
-  if(legacy()){if(items.some(x=>x.video)){toast('Видео и кружки в статусах заработают после обновления правил базы. Фото, текст и голос работают уже сейчас');items=items.filter(x=>!x.video);if(!items.length)return false}
+  if(legacy()){
     while(JSON.stringify(items).length>560000&&items.length>1)items=items.slice(1);
     try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{st:{items,updatedAt:Date.now()}});ST.mine=items;renderStories();return true}catch(e){toast('Статус не сохранился: '+fbErr(e));return false}}
   try{await F.setDoc(F.doc(F.db,'statuses',RT.uid),{items,aud:stPartners(),name:S.me.name||'',updatedAt:Date.now()});ST.mine=items;renderStories();return true}
@@ -3598,8 +3600,11 @@ function remoteDelete(c,id,all){
 }
 function remoteClear(c,all){
   if(!all){S.hidden=S.hidden||{};S.hidden[c.id]=(S.hidden[c.id]||[]).concat(c.messages.map(m=>m.id));return}
-  const F=FBX();const b=F.writeBatch(F.db);c.messages.filter(m=>!String(m.id).startsWith('p')).slice(-400).forEach(m=>b.delete(F.doc(F.db,'chats',c.rid,'messages',m.id)));
-  b.commit().catch(e=>toast(fbErr(e)));
+  const F=FBX();
+  // take every message straight from the server (video pieces and call signals too) and delete them all
+  F.getDocs(F.collection(F.db,'chats',c.rid,'messages')).then(async snap=>{const docs=snap.docs;for(let i=0;i<docs.length;i+=400){const b=F.writeBatch(F.db);docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit()}
+    F.updateDoc(F.doc(F.db,'chats',c.rid),{lastMsg:null,updatedAt:Date.now()}).catch(()=>{})}).catch(e=>toast(fbErr(e)));
+  c.messages=[];c.pending=[];save();
 }
 async function openRemoteChatWith(otherUid){
   const F=FBX();const id=[RT.uid,otherUid].sort().join('_');const ref=F.doc(F.db,'chats',id);
