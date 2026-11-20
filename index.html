@@ -762,6 +762,13 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 .sv-bars2{display:flex;align-items:center;gap:3px;height:34px}.sv-bars2 i{width:4px;height:8px;border-radius:2px;background:#fff;opacity:.8}
 .sv-voice.playing .sv-bars2 i{animation:svb .6s ease-in-out infinite alternate}.sv-bars2 i:nth-child(3n){animation-delay:.2s}.sv-bars2 i:nth-child(3n+1){animation-delay:.4s}
 @keyframes svb{to{height:30px}}
+.stc-mic{position:relative;z-index:4;pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:0 20px}
+.stc-bigmic{width:120px;height:120px;border-radius:50%;border:0;background:#fff;color:#ff3b30;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 40px rgba(0,0,0,.3);transition:transform .2s}
+.stc-bigmic .uico{width:54px;height:54px;stroke-width:2.2}.stc-bigmic:active{transform:scale(.93)}
+.stc-bigmic.rec{background:#ff3b30;color:#fff;animation:micPulse 1.2s ease-in-out infinite}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.55)}50%{box-shadow:0 0 0 22px rgba(255,59,48,0)}}
+.stc-mt{font-size:16px;font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.25)}.stc-mt.big{font-size:22px}
+.stc-again{border:0;background:none;color:#fff;font:inherit;text-decoration:underline;opacity:.85}
 </style>
 </head>
 <body>
@@ -3068,7 +3075,7 @@ function openStatusComposer(){
   const ta=el.querySelector('textarea'),card=el.querySelector('.stc-card'),mbox=el.querySelector('.stc-media'),go=el.querySelector('.stc-go');
   const close=()=>{el.classList.remove('show');setTimeout(()=>el.remove(),300)};
   const setKind=k=>el.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
-  const clearMedia=()=>{img=null;media=null;mbox.innerHTML='';card.classList.remove('photo');card.style.background=ST_BGS[bg];ta.placeholder='Напишите статус…'};
+  const clearMedia=()=>{img=null;media=null;mbox.innerHTML='';ta.style.display='';card.classList.remove('photo');card.style.background=ST_BGS[bg];ta.placeholder='Напишите статус…'};
   el.querySelector('.stc-x').onclick=close;
   el.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{bg=+b.dataset.b;if(!img&&!(media&&media.kind!=='voice'))card.style.background=ST_BGS[bg];el.querySelectorAll('[data-b]').forEach(x=>x.classList.toggle('on',x===b))});
   el.querySelector('[data-k="text"]').onclick=()=>{clearMedia();setKind('text');ta.focus()};
@@ -3079,17 +3086,27 @@ function openStatusComposer(){
         compressVideo(file,p=>{const b=mbox.querySelector('b');if(b)b.textContent=Math.round(p*100)+'%'}).then(r=>{if(r.dur>60){mbox.innerHTML='<div class="stc-prep">Для статуса — до 60 секунд</div>';return}
           clearMedia();media={kind:'video',blob:r.blob,poster:r.poster,dur:r.dur,mime:r.type};card.style.background='#000';card.classList.add('photo');ta.placeholder='Подпись…';
           mbox.innerHTML=`<video src="${URL.createObjectURL(r.blob)}" autoplay muted loop playsinline></video>`;setKind('video')}).catch(()=>{mbox.innerHTML='<div class="stc-prep">Не получилось подготовить это видео</div>'})}};f.click()});
-  el.querySelector('[data-k="voice"]').onclick=async()=>{clearMedia();setKind('voice');
-    aSess('play-and-record');let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){aSess('playback');toast('Разрешите доступ к микрофону');return}
-    const mime=pickMime();let rec;try{rec=mime?new MediaRecorder(st,{mimeType:mime}):new MediaRecorder(st)}catch(_){rec=new MediaRecorder(st)}
-    const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};const t0=Date.now();
-    mbox.innerHTML=`<div class="stc-voice"><span class="rdot"></span><span class="stc-vt">0:00</span><button class="stc-vstop">Готово</button></div>`;
-    const tm=setInterval(()=>{const t=(Date.now()-t0)/1000;const e=mbox.querySelector('.stc-vt');if(e)e.textContent=fmtDur(t);if(t>=60)stop()},250);
-    const stop=()=>{if(rec.state==='inactive')return;clearInterval(tm);rec.stop()};
-    rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150);const dur=(Date.now()-t0)/1000;if(dur<1){mbox.innerHTML='';toast('Слишком коротко');return}
-      const raw=new Blob(chunks,{type:rec.mimeType||'audio/mp4'});const w=await toWav(raw,dur).catch(()=>raw);const src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)});
-      media={kind:'voice',src,dur};mbox.innerHTML=`<div class="stc-voice">${UIC.mic}<span>Голосовое · ${fmtDur(dur)}</span><button class="stc-vstop" id="stcListen">▶ Прослушать</button></div>`;const lb=mbox.querySelector('#stcListen');const au=new Audio(src);lb.onclick=()=>{aSess('playback');au.volume=1;if(au.paused){au.currentTime=0;au.play().catch(()=>toast('Не удалось включить звук'));lb.textContent='⏸ Пауза'}else{au.pause();lb.textContent='▶ Прослушать'}};au.onended=()=>lb.textContent='▶ Прослушать'};
-    mbox.querySelector('.stc-vstop').onclick=stop;rec.start()};
+  el.querySelector('[data-k="voice"]').onclick=()=>{clearMedia();setKind('voice');ta.style.display='none';
+    // a big microphone: tap to record, tap again to stop
+    mbox.innerHTML=`<div class="stc-mic"><button class="stc-bigmic" id="bigMic">${UIC.mic}</button><div class="stc-mt" id="micTxt">Нажмите, чтобы записать голосовое</div></div>`;
+    const bm=mbox.querySelector('#bigMic'),mt=mbox.querySelector('#micTxt');let rec=null,st=null,t0=0,tm=0,chunks=[];
+    bm.onclick=async()=>{
+      if(rec&&rec.state==='recording'){clearInterval(tm);rec.stop();return}
+      aSess('play-and-record');
+      try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){aSess('playback');mt.textContent='Нет доступа к микрофону. Разрешите: Настройки → Safari → Микрофон';return}
+      const mime=pickMime();try{rec=mime?new MediaRecorder(st,{mimeType:mime}):new MediaRecorder(st)}catch(_){rec=new MediaRecorder(st)}
+      chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};t0=Date.now();
+      bm.classList.add('rec');mt.textContent='Идёт запись 0:00 · нажмите, чтобы остановить';
+      tm=setInterval(()=>{const t=(Date.now()-t0)/1000;mt.textContent=`Идёт запись ${fmtDur(t)} · нажмите, чтобы остановить`;if(t>=60){clearInterval(tm);rec.stop()}},250);
+      rec.onstop=async()=>{st.getTracks().forEach(t=>t.stop());setTimeout(()=>aSess('playback'),150);bm.classList.remove('rec');const dur=(Date.now()-t0)/1000;
+        if(dur<1){mt.textContent='Слишком коротко — нажмите и говорите дольше';return}
+        mt.textContent='Сохраняю…';const raw=new Blob(chunks,{type:rec.mimeType||'audio/mp4'});const w=await toWav(raw,dur).catch(()=>raw);
+        const src=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(w)});media={kind:'voice',src,dur};
+        mbox.innerHTML=`<div class="stc-mic"><div class="stc-mt big">Голосовое · ${fmtDur(dur)}</div><button class="stc-vstop" id="stcListen">▶ Прослушать</button><button class="stc-again" id="stcAgain">Записать заново</button></div>`;
+        const au=new Audio(src),lb=mbox.querySelector('#stcListen');lb.onclick=()=>{aSess('playback');au.volume=1;if(au.paused){au.currentTime=0;au.play().catch(()=>toast('Не удалось включить звук'));lb.textContent='⏸ Пауза'}else{au.pause();lb.textContent='▶ Прослушать'}};au.onended=()=>lb.textContent='▶ Прослушать';
+        mbox.querySelector('#stcAgain').onclick=()=>{au.pause();el.querySelector('[data-k="voice"]').click()}};
+      rec.start()};
+  };
   if(el.querySelector('[data-k="round"]'))el.querySelector('[data-k="round"]').onclick=()=>openRoundRecorder({onDone:(file,poster,dur)=>{clearMedia();media={kind:'round',blob:file,poster,dur,mime:file.type};card.style.background=ST_BGS[bg];mbox.innerHTML=`<video class="stc-round" src="${URL.createObjectURL(file)}" autoplay muted loop playsinline></video>`;setKind('round')}});
   go.onclick=async()=>{const text=ta.value.trim();if(!text&&!img&&!media){toast('Напишите текст или добавьте фото, видео, голос или кружок');return}
     const it={id:uid()+uid(),time:Date.now(),text,bg:ST_BGS[bg]};if(img)it.img=img;
