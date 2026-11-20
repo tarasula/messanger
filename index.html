@@ -843,6 +843,9 @@ body.rtl .iab{text-align:right}
 .cl-mic{position:absolute;left:14px;right:14px;top:30%;z-index:20;background:rgba(20,20,24,.94);color:#fff;border-radius:18px;padding:16px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}
 .cl-mic b{font-size:17px}.cl-mic p{font-size:14px;opacity:.85;margin:8px 0 12px;line-height:1.35}.cl-mic div{display:flex;flex-direction:column;gap:8px}
 .cl-mic button{border:0;border-radius:12px;padding:11px;font:inherit;font-weight:600;color:#fff;background:#2ea6ff}.cl-mic .r2{background:rgba(255,255,255,.14)}
+.call.swap .cl-self{left:0!important;top:0!important;right:0!important;width:100%!important;height:100%!important;border-radius:0;z-index:1;box-shadow:none}
+.call.swap.rvid .cl-remote{inset:auto;top:70px;right:14px;width:96px;height:132px;border-radius:16px;z-index:3;pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.call.swap.rvid .cl-main{opacity:0}
 </style>
 </head>
 <body>
@@ -2693,9 +2696,18 @@ function handleExtra(sh,c){sh.addEventListener('click',e=>{const x=e.target.clos
 },true)}
 
 /* ===== real calls between people (WebRTC; signalling travels as hidden messages of the chat) ===== */
-const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}];
+const ICE_BASE=[{urls:['stun:stun.l.google.com:19302','stun:stun.cloudflare.com:3478']}];
+let ICE_SERVERS=ICE_BASE.slice();const ICEX={t:0,p:null};
+async function staticTurn(){try{const user=(Math.floor(Date.now()/1000)+86400)+':msgr';const k=await crypto.subtle.importKey('raw',new TextEncoder().encode('openrelayprojectsecret'),{name:'HMAC',hash:'SHA-1'},false,['sign']);
+  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(user)));let b='';sig.forEach(x=>b+=String.fromCharCode(x));
+  return [{urls:['turn:staticauth.openrelay.metered.ca:80','turn:staticauth.openrelay.metered.ca:443','turn:staticauth.openrelay.metered.ca:443?transport=tcp','turns:staticauth.openrelay.metered.ca:443?transport=tcp'],username:user,credential:btoa(b)}]}catch(_){return []}}
+function loadIce(force){if(!force&&ICEX.p&&Date.now()-ICEX.t<3*3600e3)return ICEX.p;ICEX.t=Date.now();
+  ICEX.p=(async()=>{let cf=[];try{const c=JSON.parse(localStorage.getItem('msgr_ice')||'null');if(c&&Date.now()-c.t<6*3600e3)cf=c.v}catch(_){}
+    if(!cf.length&&PUSH_URL){try{const r=await fetch(PUSH_URL.replace(/\/$/,'')+'/turn',{cache:'no-store'});const j=await r.json();cf=(j.iceServers||[]).filter(x=>x&&x.urls);if(cf.length)try{localStorage.setItem('msgr_ice',JSON.stringify({t:Date.now(),v:cf}))}catch(_){}}catch(_){}}
+    const st=await staticTurn();ICE_SERVERS=[...ICE_BASE,...cf,...st];return ICE_SERVERS})();return ICEX.p}
+setTimeout(()=>loadIce(),2500);
 function whenConnected(pc,ms){return new Promise(res=>{const ok=()=>['connected','completed'].includes(pc.iceConnectionState)||pc.connectionState==='connected';if(ok())return res(true);const t=setTimeout(()=>res(false),ms);const f=()=>{if(ok()){clearTimeout(t);res(true)}else if(pc.iceConnectionState==='failed'||pc.connectionState==='failed'){clearTimeout(t);res(false)}};pc.addEventListener('iceconnectionstatechange',f);pc.addEventListener('connectionstatechange',f)})}
-async function goLive(K){setCallStatus('Соединение…');const ok=await whenConnected(K.pc,20000);if(CALL!==K)return;if(!ok){toast('Звонок не соединился: сеть не пропускает звук. Попробуйте через Wi-Fi');endCall(K.dir==='out'?'cancelled':'declined');return}connectCall();const a=$('#clAudio');if(a&&a.paused)tapForSound(a);if(K.local)meter(K.local,'clML')}
+async function goLive(K){setCallStatus('Соединение…');const ok=await whenConnected(K.pc,30000);if(CALL!==K)return;if(!ok){toast('Звонок не соединился: сеть не пропускает звук. Попробуйте через Wi-Fi');endCall(K.dir==='out'?'cancelled':'declined');return}connectCall();const a=$('#clAudio');if(a&&a.paused)tapForSound(a);if(K.local)meter(K.local,'clML')}
 function meter(st,id){const ui=$('#callUI');if(!ui||!st.getAudioTracks().length)return;let box=ui.querySelector('.cl-meters');if(!box){box=document.createElement('div');box.className='cl-meters';box.innerHTML='<div><span>🎤 Ваш микрофон</span><b id="clML"><i></i></b></div><div><span>🔊 Собеседник</span><b id="clRL"><i></i></b></div>';ui.appendChild(box)}
   const ac=actx();if(!ac)return;try{ac.resume&&ac.resume()}catch(_){}let an;try{const src=ac.createMediaStreamSource(st);an=ac.createAnalyser();an.fftSize=256;src.connect(an)}catch(_){return}
   const buf=new Uint8Array(an.fftSize);const bar=()=>ui.querySelector('#'+id+' i');
@@ -2703,21 +2715,23 @@ function meter(st,id){const ui=$('#callUI');if(!ui||!st.getAudioTracks().length)
 function tapForSound(v){const p=v.play();if(p&&p.catch)p.catch(()=>{const ui=$('#callUI');if(!ui||ui.querySelector('.cl-snd'))return;const b=document.createElement('button');b.className='cl-snd';b.textContent='🔊 Нажмите, чтобы включить звук';ui.appendChild(b);b.onclick=()=>{v.muted=false;v.play().then(()=>b.remove()).catch(()=>{})}})}
 const RTCX={seen:new Set()};
 function sigSend(c,d){try{const F=FBX();return F.setDoc(F.doc(F.collection(F.db,'chats',c.rid,'messages')),{from:RT.uid,time:Date.now(),sig:d}).then(r=>r,()=>null)}catch(_){return Promise.resolve(null)}}
-function waitIce(pc){return new Promise(res=>{if(pc.iceGatheringState==='complete')return res();const t=setTimeout(res,2500);pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res()}})})}
+function waitIce(pc){return new Promise(res=>{if(pc.iceGatheringState==='complete')return res();const t0=Date.now();let done=false;const fin=()=>{if(done)return;done=true;clearInterval(iv);res()};
+  const iv=setInterval(()=>{const sd=(pc.localDescription&&pc.localDescription.sdp)||'';const el=Date.now()-t0;if(pc.iceGatheringState==='complete'||(/typ relay/.test(sd)&&el>700)||(el>2500&&/typ srflx/.test(sd)&&!ICE_SERVERS.some(x=>x.username))||el>4000)fin()},150);
+  pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete')fin()})})}
 function callKeyFrom(id){const h=hash32(id);return [0,1,2,3].map(i=>KEYMOJI[(h>>>(i*7))%KEYMOJI.length])}
 async function getMedia(video){
   try{return await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:video?{facingMode:'user',width:{ideal:640},height:{ideal:480}}:false})}
   catch(e){if(video){try{toast('Камера недоступна — звоним без видео');return await navigator.mediaDevices.getUserMedia({audio:true})}catch(_){}}throw e}
 }
 function newPeer(){
-  const pc=new RTCPeerConnection({iceServers:ICE_SERVERS});
+  const pc=new RTCPeerConnection({iceServers:ICE_SERVERS,iceCandidatePoolSize:2});
   pc.ontrack=e=>{const st=e.streams[0];if(!st||!CALL)return;CALL.remote=st;attachRemote(st)};
   pc.oniceconnectionstatechange=()=>{if(!CALL||CALL.pc!==pc)return;const s=pc.iceConnectionState;if((s==='connected'||s==='completed')&&CALL._lost){CALL._lost=0;clearTimeout(CALL._lostT);clearTimeout(CALL._dc2);clearTimeout(CALL._dc);toast('Связь восстановлена');try{const au=$('#clAudio');au&&au.play().catch(()=>{})}catch(_){}}
     if(s==='failed'){if(CALL.st==='active'&&(document.hidden||Date.now()-(RTCX.shownAt||0)<15000)){callLost(CALL);return}toast('Не удалось соединиться: сеть не пропускает звонок. Попробуйте через Wi-Fi');endCall(CALL.st==='active'?'ok':'cancelled')}
     if(s==='disconnected'&&CALL.st==='active'){setCallStatus('Связь прерывается…');clearTimeout(CALL._dc);CALL._dc=setTimeout(()=>{if(CALL&&CALL.pc===pc&&pc.iceConnectionState!=='connected'&&pc.iceConnectionState!=='completed'){if(document.hidden){callLost(CALL);return}restartIce(CALL);CALL._dc2=setTimeout(()=>{if(CALL&&CALL.pc===pc&&!['connected','completed'].includes(pc.iceConnectionState))endCall('ok')},20000)}},9000)}};
   return pc;
 }
-function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.className='cl-remote';v.autoplay=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));
+function primeRemote(){const ui=$('#callUI');if(!ui||$('#clRemote'))return;const v=document.createElement('video');v.id='clRemote';v.addEventListener('click',()=>{if(ui.classList.contains('swap'))ui.classList.remove('swap')});v.className='cl-remote';v.autoplay=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');ui.insertBefore(v,ui.querySelector('.cl-top'));
   const a=document.createElement('audio');a.id='clAudio';a.autoplay=true;a.setAttribute('playsinline','');ui.appendChild(a);try{const p=a.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}}
 function attachRemote(st){
   const ui=$('#callUI');if(!ui)return;primeRemote();const v=$('#clRemote'),a=$('#clAudio');
@@ -2738,6 +2752,7 @@ async function startRealCall(c,video,fromEl){aSess('auto');
   try{
     const st=await getMedia(video);if(!CALL||CALL.callId!==id){st.getTracks().forEach(t=>t.stop());return}
     CALL.local=st;CALL.stream=st;CALL.video=st.getVideoTracks().length>0;showSelf(st);
+    await Promise.race([loadIce(),new Promise(r=>setTimeout(r,2500))]);
     const pc=newPeer();CALL.pc=pc;st.getTracks().forEach(t=>pc.addTrack(t,st));
     await pc.setLocalDescription(await pc.createOffer());await waitIce(pc);
     if(!CALL||CALL.callId!==id)return;
@@ -2773,6 +2788,7 @@ async function acceptRealCall(noMic){aSess('auto');
     let st;if(noMic)st=new MediaStream();else{try{st=await getMedia(K.video)}catch(e){if(CALL!==K)return;K.st='incoming';paintCtrls();setCallStatus('Нет доступа к микрофону');micHelp(e,()=>acceptRealCall(),()=>acceptRealCall(true));return}}
     if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
     K.local=st;K.stream=st;showSelf(st);
+    await Promise.race([loadIce(),new Promise(r=>setTimeout(r,2500))]);
     const pc=newPeer();K.pc=pc;st.getTracks().forEach(t=>pc.addTrack(t,st));if(noMic){pc.addTransceiver('audio',{direction:'recvonly'});if(K.video)pc.addTransceiver('video',{direction:'recvonly'});toast('Вы слышите собеседника, но он вас — нет')}
     await pc.setRemoteDescription({type:'offer',sdp:K.offer});
     await pc.setLocalDescription(await pc.createAnswer());await waitIce(pc);
@@ -4823,9 +4839,9 @@ function toggleVideo(){
 }
 function initSelfDrag(){
   const s=$('#clSelf');let st=null;
-  s.addEventListener('pointerdown',e=>{const r=s.getBoundingClientRect();st={dx:e.clientX-r.left,dy:e.clientY-r.top};s.setPointerCapture(e.pointerId);s.style.transition='none'});
+  s.addEventListener('pointerdown',e=>{const r=s.getBoundingClientRect();st={dx:e.clientX-r.left,dy:e.clientY-r.top,x0:e.clientX,y0:e.clientY};s.setPointerCapture(e.pointerId);s.style.transition='none'});
   s.addEventListener('pointermove',e=>{if(!st)return;const ar=$('#callUI').getBoundingClientRect();s.style.left=(e.clientX-ar.left-st.dx)+'px';s.style.top=(e.clientY-ar.top-st.dy)+'px';s.style.right='auto'});
-  s.addEventListener('pointerup',()=>{if(!st)return;st=null;const ar=$('#callUI').getBoundingClientRect(),r=s.getBoundingClientRect();
+  s.addEventListener('pointerup',e=>{if(!st)return;const moved=Math.abs(e.clientX-(st.x0||e.clientX))+Math.abs(e.clientY-(st.y0||e.clientY));st=null;if(moved<8){$('#callUI').classList.toggle('swap');return}const ar=$('#callUI').getBoundingClientRect(),r=s.getBoundingClientRect();
     const left=(r.left+r.width/2-ar.left)<ar.width/2,topH=(r.top+r.height/2-ar.top)<ar.height/2;
     s.style.transition='left .5s cubic-bezier(.34,1.4,.64,1),top .5s cubic-bezier(.34,1.4,.64,1)';
     s.style.left=(left?14:ar.width-r.width-14)+'px';s.style.top=(topH?70:ar.height-r.height-150)+'px'});
