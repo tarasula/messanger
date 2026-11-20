@@ -750,6 +750,7 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 @keyframes akPaper{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg) translateY(-2px)}}
 @keyframes akRead{0%,100%{transform:translateX(-3px)}50%{transform:translateX(3px)}}
 @keyframes akSpeed{from{transform:translateX(4px);opacity:.6}to{transform:translateX(-6px);opacity:1}}
+.panel.open{display:flex;flex-direction:column}.panel .pgrid{flex:1;height:auto;min-height:0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.panel.open{height:300px}
 </style>
 </head>
 <body>
@@ -1402,7 +1403,7 @@ function renderPanel(){
   const tabs=`<div class="ptabs"><button class="ptab ${T.panelTab==='emoji'?'on':''}" data-p="emoji">Эмодзи</button><button class="ptab ${T.panelTab==='stk'?'on':''}" data-p="stk">Стикеры</button><button class="ptab ${T.panelTab==='my'?'on':''}" data-p="my">Мои</button></div>`;
   let g;
   if(T.panelTab==='emoji')g=`<div class="pgrid">${[...new Intl.Segmenter().segment(EMOJI)].map(s=>`<button data-e="${s.segment}">${s.segment}</button>`).join('')}</div>`;
-  else if(T.panelTab==='stk'){const pk=T.stkPack||'enot';g=`<div class="spacks">${ASTK_PACKS.map(p=>`<button class="spk ${p.k===pk?'on':''}" data-pk="${p.k}">${astkSVG('ax:'+p.k+':'+(p.k==='fun'?0:p.k==='enot'?8:1))}<span>${p.n}</span></button>`).join('')}</div><div class="pgrid st ax">${Array.from({length:10},(_,i)=>`<button data-s="ax:${pk}:${i}">${astkSVG('ax:'+pk+':'+i)}</button>`).join('')}</div>`}
+  else if(T.panelTab==='stk'){const pk=T.stkPack||'enot';g=`<div class="spacks">${ASTK_PACKS.map(p=>`<button class="spk ${p.k===pk?'on':''}" data-pk="${p.k}">${astkSVG('ax:'+p.k+':'+(p.k==='fun'?0:p.k==='enot'?8:p.k==='kol'||p.k==='cat'?1:0))}<span>${p.n}</span></button>`).join('')}</div><div class="pgrid st ax">${Array.from({length:10},(_,i)=>`<button data-s="ax:${pk}:${i}">${astkSVG('ax:'+pk+':'+i)}</button>`).join('')}</div>`}
   else g=`<div class="pgrid st">${S.stickers.map((s,i)=>`<button data-m="${i}"><img src="${s}"></button>`).join('')}<button class="addstk" id="addStk2">+</button></div>`;
   p.innerHTML=tabs+g;
   p.querySelectorAll('.ptab').forEach(b=>b.onclick=()=>{T.panelTab=b.dataset.p;renderPanel()});
@@ -2855,6 +2856,9 @@ setTimeout(()=>swapIcons(document.body),0);
 /* ===== animated sticker packs (10 each, drawn here) ===== */
 const ASTK_PACKS=[
  {k:'enot',n:'Енотик',col:['#a7a9bd','#8d8fa3']},
+ {k:'grape',n:'Виноград',col:['#9b5de5','#7b3fc4']},
+ {k:'cherry',n:'Вишенки',col:['#ff3355','#e8243f']},
+ {k:'duck',n:'Утёнок',col:['#ffe066','#ffd84a']},
  {k:'kol',n:'Колобок',col:['#ffd54a','#ffb300']},
  {k:'cat',n:'Котик',col:['#ffb57a','#f08a3c']},
  {k:'fun',n:'Огоньки',col:['#ff5a7a','#ff2d55']}];
@@ -2919,7 +2923,55 @@ function enotSVG(i){
   }
 }
 
-function astkSVG(id){const [,pack,ix]=id.split(':');const i=+ix;if(pack==='enot')return enotSVG(i);if(pack==='fun')return funSVG(i);if(ASTK_PACKS.some(p=>p.k===pack))return faceSVG(pack,i);return ''}
+/* packs: grape, cherries, duckling — original characters in outlined sticker style */
+function packFace(kind,i){
+  const O='#2b2238',W=(w)=>`stroke="${O}" stroke-width="${w||4}" stroke-linejoin="round" stroke-linecap="round"`;
+  const shadow=`<ellipse cx="60" cy="116" rx="34" ry="5" fill="#000" opacity=".14"/>`;
+  const S0=(cls,inner)=>`<svg class="astk ${cls}" viewBox="0 0 120 120" width="120" height="120">${shadow}${inner}</svg>`;
+  const eyes=(x1,x2,y,r)=>`<g class="ak-blink"><ellipse cx="${x1}" cy="${y}" rx="${r}" ry="${r*1.15}" fill="#fff" ${W(3)}/><ellipse cx="${x2}" cy="${y}" rx="${r}" ry="${r*1.15}" fill="#fff" ${W(3)}/><circle class="ak-look" cx="${x1+1}" cy="${y+1}" r="${r*.55}" fill="${O}"/><circle class="ak-look" cx="${x2+1}" cy="${y+1}" r="${r*.55}" fill="${O}"/><circle cx="${x1+2.5}" cy="${y-2}" r="${r*.2}" fill="#fff"/><circle cx="${x2+2.5}" cy="${y-2}" r="${r*.2}" fill="#fff"/></g>`;
+  const moods=['hi','money','love','cry','lol','sleep','cool','wow','dance','party'];const mood=moods[i];
+  // face parts placed around a centre (cx,cy), size k
+  const face=(cx,cy,k)=>{const e1=cx-9*k,e2=cx+9*k,ey=cy-3*k,er=6*k;let ey_=eyes(e1,e2,ey,er),mo=`<path d="M${cx-7*k} ${cy+8*k}q${7*k} ${7*k} ${14*k} 0" fill="none" ${W(3.5)}/>`;
+    if(mood==='love')ey_=`<g class="ak-pulse"><path d="M${e1} ${ey+6*k}l-${7*k}-${7*k}a${4*k} ${4*k} 0 01${7*k}-${5*k} ${4*k} ${4*k} 0 01${7*k} ${5*k}z" fill="#ff2d55" ${W(2.5)}/><path d="M${e2} ${ey+6*k}l-${7*k}-${7*k}a${4*k} ${4*k} 0 01${7*k}-${5*k} ${4*k} ${4*k} 0 01${7*k} ${5*k}z" fill="#ff2d55" ${W(2.5)}/></g>`;
+    if(mood==='cry'||mood==='sleep')ey_=`<path d="M${e1-6*k} ${ey}q${6*k} ${mood==='sleep'?5*k:-5*k} ${12*k} 0M${e2-6*k} ${ey}q${6*k} ${mood==='sleep'?5*k:-5*k} ${12*k} 0" fill="none" ${W(3.5)}/>`;
+    if(mood==='lol')ey_=`<path d="M${e1-6*k} ${ey-4*k}l${10*k} ${4*k}-${10*k} ${4*k}M${e2+6*k} ${ey-4*k}l-${10*k} ${4*k} ${10*k} ${4*k}" fill="none" ${W(3.5)}/>`;
+    if(mood==='cool')ey_=`<path d="M${e1-10*k} ${ey-5*k}h${38*k}v${4*k}q-${2*k} ${9*k}-${9*k} ${9*k}t-${8*k}-${8*k}h-${4*k}q0 ${8*k}-${8*k} ${8*k}t-${9*k}-${9*k}z" fill="#1d1b2b" ${W(2.5)}/>`;
+    if(mood==='wow')mo=`<ellipse class="ak-jaw" cx="${cx}" cy="${cy+11*k}" rx="${5*k}" ry="${6*k}" fill="#e8576d" ${W(3)}/>`;
+    if(mood==='lol'||mood==='party'||mood==='money'||mood==='dance')mo=`<path d="M${cx-9*k} ${cy+6*k}h${18*k}q0 ${11*k}-${9*k} ${11*k}t-${9*k}-${11*k}z" fill="#e8576d" ${W(3)}/>`;
+    if(mood==='cry')mo=`<path d="M${cx-7*k} ${cy+13*k}q${7*k}-${7*k} ${14*k} 0" fill="none" ${W(3.5)}/>`;
+    if(mood==='sleep')mo=`<ellipse cx="${cx}" cy="${cy+10*k}" rx="${3*k}" ry="${2.5*k}" fill="${O}"/>`;
+    return ey_+`<ellipse cx="${e1-8*k}" cy="${cy+6*k}" rx="${4*k}" ry="${2.5*k}" fill="#ff7a9a" opacity=".55"/><ellipse cx="${e2+8*k}" cy="${cy+6*k}" rx="${4*k}" ry="${2.5*k}" fill="#ff7a9a" opacity=".55"/>`+mo};
+  const bill=(x,y,r,cls)=>`<g class="${cls}" transform="translate(${x} ${y}) rotate(${r})"><rect x="-12" y="-6.5" width="24" height="13" rx="2" fill="#7bd36a" ${W(3)}/><circle r="3" fill="#3f9a33"/></g>`;
+  const extras=()=>{switch(mood){
+    case 'hi':return `<g class="ak-wave"><circle cx="104" cy="62" r="9" fill="#fff" ${W(3.5)}/><path d="M99 55v-6M104 53v-8M109 55v-6" ${W(3.5)}/></g>`;
+    case 'money':return bill(16,30,-20,'ak-rain')+bill(102,24,15,'ak-rain d2')+bill(22,84,12,'ak-rain d3')+bill(100,80,-10,'ak-rain d2');
+    case 'love':return `<g class="ak-rise"><path d="M100 30l-6-6a3.5 3.5 0 016-4 3.5 3.5 0 016 4z" fill="#ff5a7a" ${W(2.5)}/></g><g class="ak-rise d2"><path d="M20 38l-5-5a3 3 0 015-3 3 3 0 015 3z" fill="#ff5a7a" ${W(2.5)}/></g>`;
+    case 'cry':return `<g class="ak-drop"><path d="M42 60q-5 9 0 12q5-3 0-12z" fill="#59b4ff" ${W(2.5)}/></g><g class="ak-drop d2"><path d="M78 60q-5 9 0 12q5-3 0-12z" fill="#59b4ff" ${W(2.5)}/></g>`;
+    case 'lol':return `<g class="ak-tear"><path d="M26 58q-5 8 0 11q5-3 0-11z" fill="#59b4ff"/></g><g class="ak-tear d2"><path d="M94 58q-5 8 0 11q5-3 0-11z" fill="#59b4ff"/></g>`;
+    case 'sleep':return `<g class="ak-zzz" font-family="Arial Black,Arial" font-weight="900" fill="#8f7cff" stroke="${O}" stroke-width="1.5"><text x="92" y="34" font-size="18">Z</text></g><g class="ak-zzz d2" font-family="Arial Black,Arial" font-weight="900" fill="#8f7cff" stroke="${O}" stroke-width="1.2"><text x="102" y="18" font-size="12">z</text></g>`;
+    case 'wow':return `<g class="ak-conf"><path d="M20 24l6 6M100 22l-6 6M14 54h8M98 54h8" ${W(3.5)}/></g>`;
+    case 'dance':return `<g class="ak-conf"><text x="10" y="40" font-size="20" fill="#7c5cff" stroke="${O}" stroke-width="1.5" font-family="Arial Black,Arial">♪</text><text x="96" y="30" font-size="22" fill="#ff5a9e" stroke="${O}" stroke-width="1.5" font-family="Arial Black,Arial">♫</text></g>`;
+    case 'party':return `<g class="ak-conf"><rect x="16" y="18" width="7" height="7" fill="#ff2d55" ${W(2)}/><rect x="98" y="24" width="7" height="7" fill="#34c759" ${W(2)}/><circle cx="22" cy="92" r="4" fill="#007aff" ${W(2)}/><circle cx="102" cy="90" r="4" fill="#ffcc00" ${W(2)}/></g>`;
+    default:return '';}};
+  const bodyCls={hi:'ak-bob',money:'ak-bob',love:'ak-bob',cry:'ak-sob',lol:'ak-shake',sleep:'ak-breathe',cool:'ak-groove',wow:'ak-pop',dance:'ak-groove',party:'ak-jump'}[mood];
+  if(kind==='grape'){
+    const berries=[[60,34],[44,46],[76,46],[36,64],[60,62],[84,64],[46,82],[74,82],[60,98]];
+    const b=berries.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="15" fill="#9b5de5" ${W()}/><ellipse cx="${x-5}" cy="${y-6}" rx="4.5" ry="3" fill="#fff" opacity=".45"/>`).join('');
+    return S0(bodyCls,`<path d="M60 22q2-12 12-16" fill="none" stroke="#6b4a2a" stroke-width="5" stroke-linecap="round"/><path d="M62 18q16-14 30-2q-14 12-30 2z" fill="#6ecb63" ${W(3.5)}/>${b}<g>${face(60,62,1.15)}</g>${mood==='cool'?'':''}${extras()}`);
+  }
+  if(kind==='cherry'){
+    const c1=`<circle cx="40" cy="80" r="26" fill="#ff3355" ${W()}/><ellipse cx="30" cy="70" rx="7" ry="4.5" fill="#fff" opacity=".5"/>`;
+    const c2=`<circle cx="84" cy="74" r="22" fill="#e8243f" ${W()}/><ellipse cx="76" cy="65" rx="6" ry="4" fill="#fff" opacity=".5"/>`;
+    const stem=`<path d="M40 56q8-34 28-46M84 54q-4-26-16-44" fill="none" stroke="#4a8a3a" stroke-width="5" stroke-linecap="round"/><path d="M68 10q18-8 26 6q-16 6-26-6z" fill="#6ecb63" ${W(3.5)}/>`;
+    return S0(bodyCls,`${stem}${c2}${c1}<g>${face(40,80,.95)}</g><g class="ak-blink"><circle cx="79" cy="72" r="3" fill="${O}"/><circle cx="91" cy="72" r="3" fill="${O}"/></g><path d="M80 82q5 4 10 0" fill="none" ${W(3)}/>${extras()}`);
+  }
+  // duckling (round chick with a little blue cap, original design)
+  return S0(bodyCls,`<ellipse cx="60" cy="96" rx="34" ry="20" fill="#ffd84a" ${W()}/><path d="M28 92q-12 4-14-6q10-2 16 0" fill="#ffd84a" ${W(3.5)}/><circle cx="60" cy="56" r="34" fill="#ffe066" ${W()}/><ellipse cx="46" cy="36" rx="10" ry="5" fill="#fff" opacity=".55" transform="rotate(-25 46 36)"/>
+    <path d="M30 34q30-26 60 0q-30-8-60 0z" fill="#3e88f7" ${W(3.5)}/><path d="M60 22v-8" ${W(3.5)}/><circle cx="60" cy="12" r="4" fill="#ff5a7a" ${W(2.5)}/>
+    <g>${face(60,56,1).replace(/<path d="M5[0-9.]+ 6[0-9.]+q[^"]*" fill="none"[^>]*\/>$/,'')}</g><path d="M50 64q10 -4 20 0q-10 12-20 0z" fill="#ff9f1c" ${W(3)}/>${extras()}`);
+}
+
+function astkSVG(id){const [,pack,ix]=id.split(':');const i=+ix;if(pack==='enot')return enotSVG(i);if(pack==='grape'||pack==='cherry'||pack==='duck')return packFace(pack,i);if(pack==='fun')return funSVG(i);if(ASTK_PACKS.some(p=>p.k===pack))return faceSVG(pack,i);return ''}
 function isAstk(s){return typeof s==='string'&&s.startsWith('ax:')}
 
 /* ===== statuses (24 h) shown as rings above the chat list ===== */
