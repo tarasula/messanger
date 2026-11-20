@@ -828,6 +828,10 @@ body.incog .mtm,body.incog .item .tm>:not(span),body.incog .callrow .tm{visibili
 #bdays{padding:0 14px}.bdb{display:block;width:100%;margin:6px 0 2px;border:0;border-radius:14px;padding:11px 14px;background:linear-gradient(135deg,#ff9a8b,#ff6a88 55%,#ff99ac);color:#fff;font:inherit;font-size:14.5px;text-align:left;box-shadow:0 4px 14px rgba(255,106,136,.3);animation:bdIn .5s cubic-bezier(.34,1.5,.64,1)}
 .bdb.me{background:linear-gradient(135deg,#7f5cff,#ff5a9e)}@keyframes bdIn{from{transform:scale(.9);opacity:0}}
 .bd-in{width:100%;background:none;border:0;color:var(--tx);font:inherit;font-size:18px}.btn.ghost{background:none;color:#ff3b30;margin-top:6px}
+.arc-in,.bd-in{width:100%;box-sizing:border-box;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit}
+.arc-top{display:flex;gap:8px;align-items:center}.arc-top .arc-in{flex:1}
+.lang-r .lang-n{flex:1}
+body.rtl .r .v{margin-left:0;margin-right:auto}
 </style>
 </head>
 <body>
@@ -1114,6 +1118,7 @@ function renderSettings(){
      <div class="r" id="setAe"><span class="ico" style="background:#ff2d55">✨</span>Анимированные эмодзи<span class="sw ${S.animEmoji?'on':''}"></span></div>
      <div class="r" id="setArch"><span class="ico" style="background:#8e8e93">🗂</span>Архив и закрытые чаты<span class="v">потяните чаты вниз</span></div>
      ${REAL?`<div class="r" id="setOut"><span class="ico" style="background:#5856d6">🚪</span>Выйти из аккаунта</div><div class="r red" id="setDelAcc"><span class="ico" style="background:#ff3b30">🗑</span>Удалить аккаунт</div>`:''}
+     <div class="r" id="setLang"><span class="ico" style="background:#007aff">🌐</span>Язык<span class="v" data-notr>${(LANGS.find(x=>x[0]===lang())||LANGS[0])[1]}</span></div>
      <div class="r" id="setInc"><span class="ico" style="background:#1c1c1e">🕶</span>Режим инкогнито<span class="v">${incog()?'Включён':'Выкл.'}</span></div>
      <div class="r" id="setSto"><span class="ico" style="background:#34c759">📦</span>Данные и память</div>
      <div class="r" id="setSnd"><span class="ico" style="background:#ff9500">🔊</span>Проверка звука</div>
@@ -1133,7 +1138,7 @@ function renderSettings(){
   $('#setPc').onclick=()=>{const setNew=()=>openPasscode({mode:'set',title:'Новый код-пароль',onOk:c=>{S.passcode=c;save();renderSettings();toast('Код-пароль сохранён')}});if(S.passcode)openPasscode({mode:'check',title:'Текущий код-пароль',onOk:()=>setTimeout(setNew,400)});else setNew()};
   $('#setAe').onclick=()=>{S.animEmoji=!S.animEmoji;save();$('#setAe .sw').classList.toggle('on',S.animEmoji);document.body.classList.toggle('noanim',!S.animEmoji)};
   $('#setArch').onclick=()=>{T.tab='chats';T.archive=true;renderMain()};
-  $('#setSnd').onclick=openSoundCheck;$('#setInc').onclick=openIncognito;$('#setSto').onclick=openStorage;$('#setBd').onclick=openBirthday;$('#setArc').onclick=openStatusArchive;
+  $('#setSnd').onclick=openSoundCheck;$('#setLang').onclick=openLanguage;$('#setInc').onclick=openIncognito;$('#setSto').onclick=openStorage;$('#setBd').onclick=openBirthday;$('#setArc').onclick=openStatusArchive;
   $('#setAbout').onclick=()=>openSheet('О мессенджере',`<div class="pf-top"><div style="font-size:54px">💬</div><p class="pf-desc">Переписка, звонки, голосовые и кружочки — между настоящими людьми.<br><br>В каналах часть подписчиков, просмотров, реакций и голосов в опросах добавляют боты-фанаты, чтобы каналы росли живее.</p></div>`);
   $('#setBl').onclick=()=>{const bl=Object.entries(S.users).filter(([,u])=>u.blocked);openSheet('Заблокированные',bl.length?bl.map(([id,u])=>`<div class="chk" data-u="${id}">${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},40)}<div>${esc(u.name)}</div><button class="link" style="margin-left:auto">Разблокировать</button></div>`).join(''):'<div class="empty">Никого нет 🙂</div>',sh=>sh.querySelectorAll('[data-u]').forEach(r=>r.querySelector('button').onclick=()=>{S.users[r.dataset.u].blocked=false;save();r.animate([{opacity:1},{opacity:0,transform:'translateX(40px)'}],{duration:250,fill:'forwards'}).onfinish=()=>r.remove();renderSettings()}))};
   $('#addStk').onclick=()=>pickImage(d=>{S.stickers.push(d);save();renderSettings();toast('Стикер добавлен')},256);
@@ -3370,12 +3375,12 @@ async function archiveStatus(it){try{await IDB.put('st:'+it.id,it);S.stArch=S.st
 async function openStatusArchive(){
   const items=[];for(const id of (S.stArch||[])){const it=await IDB.get('st:'+id);if(it)items.push(it)}items.sort((a,b)=>b.time-a.time);
   let day='';
-  const list=()=>{const L=day?items.filter(x=>new Date(x.time).toISOString().slice(0,10)===day):items;if(!L.length)return `<div class="pf-top"><div style="font-size:50px">🌀</div><p class="pf-desc">${day?'В этот день статусов не было':'Здесь появятся все ваши статусы — новые сверху'}</p></div>`;
+  const list=()=>{const dk=t=>{const d=new Date(t),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())};const L=day?items.filter(x=>day.iso?dk(x.time)===day.iso:dk(x.time).slice(5)===day.md):items;if(!L.length)return `<div class="pf-top"><div style="font-size:50px">🌀</div><p class="pf-desc">${day?'В этот день статусов не было':'Здесь появятся все ваши статусы — новые сверху'}</p></div>`;
     let last='',h='';L.forEach(x=>{const d=dmy(x.time);if(d!==last){h+=`<div class="sec-h">${esc(d)}</div>`;last=d}
       h+=`<button class="arc" data-id="${x.id}" style="background:${x.img?`center/cover url(${x.img})`:x.bg}">${x.voice?`<span class="arc-v">${UIC.mic} ${fmtDur(x.voice.dur||0)}</span>`:''}${x.text?`<span class="arc-t">${esc(x.text.slice(0,60))}</span>`:''}<span class="arc-h">${hhmm(x.time)}${x.priv?' · 🔒':''}</span></button>`});return h};
-  openSheet('Архив статусов',`<div class="arc-top"><label>Дата <input type="date" id="arcDay"></label><button id="arcAll">Все</button></div><div id="arcList" class="arc-grid">${list()}</div>`,sh=>{
+  openSheet('Архив статусов',`<div class="arc-top"><input type="text" id="arcDay" class="arc-in" placeholder="Введите дату, напр. 26 ноября 2026" autocomplete="off"><button id="arcAll">Все</button></div><div id="arcList" class="arc-grid">${list()}</div>`,sh=>{
     const L=sh.querySelector('#arcList');const bind=()=>L.querySelectorAll('.arc').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===b.dataset.id);if(it){closePopups();setTimeout(()=>openStoryViewer('me',[it]),300)}});bind();
-    sh.querySelector('#arcDay').onchange=e=>{day=e.target.value;L.innerHTML=list();bind()};sh.querySelector('#arcAll').onclick=()=>{day='';sh.querySelector('#arcDay').value='';L.innerHTML=list();bind()};
+    sh.querySelector('#arcDay').oninput=e=>{const v=e.target.value.trim();const p=v?parseDateText(v):null;if(v&&!p)return;day=p||'';L.innerHTML=list();bind()};sh.querySelector('#arcAll').onclick=()=>{day='';sh.querySelector('#arcDay').value='';L.innerHTML=list();bind()};
   });
 }
 
@@ -3403,14 +3408,405 @@ function todayMD(){const d=new Date();return String(d.getMonth()+1).padStart(2,'
 function bdayMD(b){return b?String(b).slice(-5):''}
 function openBirthday(){
   openSheet('День рождения',`<div class="pf-top"><div style="font-size:56px">🎂</div><p class="pf-desc">В этот день у ваших контактов над статусами появится напоминание поздравить вас.</p></div>
-   <div class="grp" style="padding:12px 14px"><input type="date" id="bdIn" value="${esc(S.me.bday||'')}" class="bd-in"></div><button class="btn" id="bdSave">Сохранить</button>${S.me.bday?'<button class="btn ghost" id="bdDel">Убрать дату</button>':''}`,sh=>{
+   <div class="grp" style="padding:12px 14px"><input type="text" id="bdIn" value="${esc(bdayText(S.me.bday))}" class="bd-in" placeholder="например 26 ноября 2005 или 26.11.2005" autocomplete="off"></div><button class="btn" id="bdSave">Сохранить</button>${S.me.bday?'<button class="btn ghost" id="bdDel">Убрать дату</button>':''}`,sh=>{
     const put=v=>{S.me.bday=v||'';save();if(REAL&&RT.uid){const F=FBX();F.updateDoc(F.doc(F.db,'users',RT.uid),{bday:v||''}).catch(e=>toast(fbErr(e)))}closePopups();renderMain();toast(v?'День рождения сохранён':'Дата убрана')};
-    sh.querySelector('#bdSave').onclick=()=>put(sh.querySelector('#bdIn').value);sh.querySelector('#bdDel')?.addEventListener('click',()=>put(''))});
+    sh.querySelector('#bdSave').onclick=()=>{const v=sh.querySelector('#bdIn').value.trim();if(!v)return put('');const p=parseDateText(v);if(!p)return toast('Не понял дату. Пример: 26 ноября 2005');put(p.iso||p.md)};sh.querySelector('#bdDel')?.addEventListener('click',()=>put(''))});
 }
 function birthdayBanner(){const md=todayMD();const ps=Object.entries(S.users).filter(([id,u])=>u.remote&&!u.blocked&&bdayMD(u.bday)===md&&(u.contact||Object.values(S.chats).some(c=>c.user===id)));
-  let h='';if(bdayMD(S.me.bday)===md)h+=`<div class="bdb me">🎉 С днём рождения, ${esc((S.me.name||'').split(' ')[0])}!</div>`;
-  ps.forEach(([id,u])=>{h+=`<button class="bdb" data-bd="${id}">🎂 Сегодня день рождения: <b>${esc(u.name)}</b> — поздравьте!</button>`});return h}
+  let h='';if(bdayMD(S.me.bday)===md){const nm=esc((S.me.name||'').split(' ')[0]);h+=`<div class="bdb me" data-notr>${W[lang()]?W[lang()].hb(nm):'🎉 С днём рождения, '+nm+'!'}</div>`}
+  ps.forEach(([id,u])=>{h+=`<button class="bdb" data-bd="${id}" data-notr>🎂 ${W[lang()]?W[lang()].bd('<b>'+esc(u.name)+'</b>'):'Сегодня день рождения: <b>'+esc(u.name)+'</b> — поздравьте!'}</button>`});return h}
 
+/* interface dictionary: Russian → [en, ar, be, ca, zh, fr, he, sr, pl, sv] */
+const I18N_D={
+'Чаты':['Chats','الدردشات','Чаты','Xats','聊天','Discussions','צ׳אטים','Četovi','Czaty','Chattar'],
+'Контакты':['Contacts','جهات الاتصال','Кантакты','Contactes','联系人','Contacts','אנשי קשר','Kontakti','Kontakty','Kontakter'],
+'Звонки':['Calls','المكالمات','Званкі','Trucades','通话','Appels','שיחות','Pozivi','Połączenia','Samtal'],
+'Настройки':['Settings','الإعدادات','Налады','Configuració','设置','Réglages','הגדרות','Podešavanja','Ustawienia','Inställningar'],
+'Все чаты':['All chats','كل الدردشات','Усе чаты','Tots els xats','全部聊天','Toutes','כל הצ׳אטים','Svi četovi','Wszystkie','Alla chattar'],
+'Личные':['Personal','شخصية','Асабістыя','Personals','私聊','Personnelles','פרטיים','Lični','Prywatne','Personliga'],
+'Группы':['Groups','المجموعات','Групы','Grups','群组','Groupes','קבוצות','Grupe','Grupy','Grupper'],
+'Каналы':['Channels','القنوات','Каналы','Canals','频道','Chaînes','ערוצים','Kanali','Kanały','Kanaler'],
+'Поиск по сообщениям и людям':['Search messages and people','ابحث في الرسائل والأشخاص','Пошук па паведамленнях і людзях','Cerca missatges i persones','搜索消息和用户','Rechercher messages et personnes','חיפוש הודעות ואנשים','Pretraga poruka i ljudi','Szukaj wiadomości i osób','Sök meddelanden och personer'],
+'Поиск':['Search','بحث','Пошук','Cerca','搜索','Rechercher','חיפוש','Pretraga','Szukaj','Sök'],
+'Изм.':['Edit','تعديل','Рэд.','Edita','编辑','Modifier','עריכה','Izmeni','Edytuj','Redigera'],
+'Сообщение':['Message','رسالة','Паведамленне','Missatge','消息','Message','הודעה','Poruka','Wiadomość','Meddelande'],
+'Сообщения':['Messages','الرسائل','Паведамленні','Missatges','消息','Messages','הודעות','Poruke','Wiadomości','Meddelanden'],
+'Отправить':['Send','إرسال','Адправіць','Envia','发送','Envoyer','שליחה','Pošalji','Wyślij','Skicka'],
+'Отмена':['Cancel','إلغاء','Скасаваць','Cancel·la','取消','Annuler','ביטול','Otkaži','Anuluj','Avbryt'],
+'Готово':['Done','تم','Гатова','Fet','完成','OK','סיום','Gotovo','Gotowe','Klar'],
+'Сохранить':['Save','حفظ','Захаваць','Desa','保存','Enregistrer','שמירה','Sačuvaj','Zapisz','Spara'],
+'Удалить':['Delete','حذف','Выдаліць','Suprimeix','删除','Supprimer','מחיקה','Obriši','Usuń','Radera'],
+'Закрыть':['Close','إغلاق','Закрыць','Tanca','关闭','Fermer','סגירה','Zatvori','Zamknij','Stäng'],
+'Продолжить':['Continue','متابعة','Працягнуць','Continua','继续','Continuer','המשך','Nastavi','Dalej','Fortsätt'],
+'Начать':['Start','ابدأ','Пачаць','Comença','开始','Commencer','התחלה','Počni','Zacznij','Börja'],
+'Создать':['Create','إنشاء','Стварыць','Crea','创建','Créer','יצירה','Napravi','Utwórz','Skapa'],
+'Добавить':['Add','إضافة','Дадаць','Afegeix','添加','Ajouter','הוספה','Dodaj','Dodaj','Lägg till'],
+'Найти':['Find','بحث','Знайсці','Cerca','查找','Trouver','חיפוש','Nađi','Znajdź','Hitta'],
+'Ещё':['More','المزيد','Яшчэ','Més','更多','Plus','עוד','Još','Więcej','Mer'],
+'Все':['All','الكل','Усе','Tots','全部','Tous','הכול','Svi','Wszystkie','Alla'],
+'Нет':['No','لا','Не','No','无','Non','לא','Ne','Nie','Nej'],
+'Да':['Yes','نعم','Так','Sí','是','Oui','כן','Da','Tak','Ja'],
+'Выкл.':['Off','إيقاف','Выкл.','Off','关','Désactivé','כבוי','Isklj.','Wył.','Av'],
+'Сегодня':['Today','اليوم','Сёння','Avui','今天','Aujourd’hui','היום','Danas','Dziś','Idag'],
+'Вчера':['Yesterday','أمس','Учора','Ahir','昨天','Hier','אתמול','Juče','Wczoraj','Igår'],
+'в сети':['online','متصل','у сетцы','en línia','在线','en ligne','מחובר/ת','na mreži','online','online'],
+'не в сети':['offline','غير متصل','не ў сетцы','fora de línia','离线','hors ligne','לא מחובר/ת','van mreže','offline','offline'],
+'статус скрыт':['status hidden','الحالة مخفية','статус схаваны','estat ocult','状态已隐藏','statut masqué','הסטטוס מוסתר','status skriven','status ukryty','status dold'],
+'печатает':['typing','يكتب','піша','escrivint','正在输入','écrit','מקליד/ה','kuca','pisze','skriver'],
+'записывает голосовое':['recording a voice message','يسجّل رسالة صوتية','запісвае галасавое','grava un àudio','正在录语音','enregistre un vocal','מקליט/ה הודעה קולית','snima glasovnu poruku','nagrywa wiadomość głosową','spelar in röstmeddelande'],
+'записывает кружок':['recording a video circle','يسجّل فيديو دائري','запісвае кружок','grava un vídeo rodó','正在录视频圆','enregistre une bulle vidéo','מקליט/ה עיגול וידאו','snima video krug','nagrywa wideo w kółku','spelar in videocirkel'],
+'выбирает стикер':['choosing a sticker','يختار ملصقًا','выбірае стыкер','tria un adhesiu','正在选贴纸','choisit un autocollant','בוחר/ת מדבקה','bira stiker','wybiera naklejkę','väljer klistermärke'],
+'Профиль':['Profile','الملف الشخصي','Профіль','Perfil','个人资料','Profil','פרופיל','Profil','Profil','Profil'],
+'Канал':['Channel','قناة','Канал','Canal','频道','Chaîne','ערוץ','Kanal','Kanał','Kanal'],
+'Группа':['Group','مجموعة','Група','Grup','群组','Groupe','קבוצה','Grupa','Grupa','Grupp'],
+'Звонок':['Call','اتصال','Званок','Truca','通话','Appel','שיחה','Poziv','Połącz','Ring'],
+'Видео':['Video','فيديو','Відэа','Vídeo','视频','Vidéo','וידאו','Video','Wideo','Video'],
+'Фото':['Photo','صورة','Фота','Foto','照片','Photo','תמונה','Fotografija','Zdjęcie','Foto'],
+'Текст':['Text','نص','Тэкст','Text','文字','Texte','טקסט','Tekst','Tekst','Text'],
+'Голосовое':['Voice','رسالة صوتية','Галасавое','Àudio','语音','Vocal','הודעה קולית','Glasovna','Głosówka','Röst'],
+'Голосовые':['Voice messages','الرسائل الصوتية','Галасавыя','Àudios','语音消息','Vocaux','הודעות קוליות','Glasovne poruke','Wiadomości głosowe','Röstmeddelanden'],
+'Подписаться':['Subscribe','اشترك','Падпісацца','Subscriu-t’hi','订阅','S’abonner','הרשמה','Prati','Subskrybuj','Prenumerera'],
+'Отписаться':['Unsubscribe','إلغاء الاشتراك','Адпісацца','Cancel·la la subscripció','取消订阅','Se désabonner','ביטול הרשמה','Prestani da pratiš','Anuluj subskrypcję','Avsluta prenumeration'],
+'Вы подписались на канал':['You subscribed to the channel','لقد اشتركت في القناة','Вы падпісаліся на канал','T’has subscrit al canal','你已订阅该频道','Vous êtes abonné à la chaîne','נרשמת לערוץ','Pratite kanal','Subskrybujesz kanał','Du prenumererar på kanalen'],
+'Выкл. звук':['Mute','كتم','Выкл. гук','Silencia','静音','Couper le son','השתקה','Isključi zvuk','Wycisz','Ljud av'],
+'Без звука':['Muted','صامت','Без гуку','Silenciat','静音','Sans son','מושתק','Bez zvuka','Wyciszone','Ljudlös'],
+'Уведомления':['Notifications','الإشعارات','Апавяшчэнні','Notificacions','通知','Notifications','התראות','Obaveštenja','Powiadomienia','Aviseringar'],
+'Выключить уведомления':['Turn off notifications','إيقاف الإشعارات','Выключыць апавяшчэнні','Desactiva les notificacions','关闭通知','Désactiver les notifications','כיבוי התראות','Isključi obaveštenja','Wyłącz powiadomienia','Stäng av aviseringar'],
+'Звук сообщений':['Message sound','صوت الرسائل','Гук паведамленняў','So dels missatges','消息提示音','Son des messages','צליל הודעות','Zvuk poruka','Dźwięk wiadomości','Meddelandeljud'],
+'Звук играет, когда приходит новое сообщение и мессенджер открыт.':['The sound plays when a new message arrives while the messenger is open.','يُشغَّل الصوت عند وصول رسالة جديدة والتطبيق مفتوح.','Гук гучыць, калі прыходзіць новае паведамленне і месенджар адкрыты.','El so sona quan arriba un missatge nou amb el missatger obert.','当应用打开时收到新消息会播放声音。','Le son retentit à l’arrivée d’un message quand l’app est ouverte.','הצליל מושמע כשמגיעה הודעה חדשה והאפליקציה פתוחה.','Zvuk se pušta kada stigne nova poruka dok je aplikacija otvorena.','Dźwięk gra, gdy przychodzi nowa wiadomość, a komunikator jest otwarty.','Ljudet spelas när ett nytt meddelande kommer och appen är öppen.'],
+'Тема чата':['Chat theme','سمة الدردشة','Тэма чата','Tema del xat','聊天主题','Thème du chat','ערכת נושא','Tema četa','Motyw czatu','Chattema'],
+'Для всех':['For everyone','للجميع','Для ўсіх','Per a tothom','所有人','Pour tous','לכולם','Za sve','Dla wszystkich','För alla'],
+'Только у меня':['Only for me','لي فقط','Толькі ў мяне','Només per a mi','仅自己','Seulement pour moi','רק אצלי','Samo kod mene','Tylko u mnie','Bara för mig'],
+'Тему увидите вы и собеседник':['You and the other person will see the theme','سترى أنت والطرف الآخر السمة','Тэму ўбачыце вы і суразмоўца','La veureu tu i l’altra persona','你和对方都会看到主题','Vous et votre interlocuteur verrez le thème','את/ה והצד השני תראו את העיצוב','Temu ćete videti vi i sagovornik','Motyw zobaczysz ty i rozmówca','Du och den andra ser temat'],
+'Обычная':['Classic','عادية','Звычайная','Clàssica','经典','Classique','רגילה','Obična','Zwykły','Vanlig'],
+'Розово-синяя':['Pink & blue','وردي وأزرق','Ружова-сіняя','Rosa i blau','粉蓝','Rose et bleu','ורוד וכחול','Roze-plava','Różowo-niebieski','Rosa och blå'],
+'Жёлто-оранжевая':['Yellow & orange','أصفر وبرتقالي','Жоўта-аранжавая','Groc i taronja','黄橙','Jaune et orange','צהוב וכתום','Žuto-narandžasta','Żółto-pomarańczowy','Gul och orange'],
+'Мятная':['Mint','نعناعي','Мятная','Menta','薄荷','Menthe','מנטה','Mentol','Miętowy','Mint'],
+'Закат':['Sunset','غروب','Захад','Posta de sol','日落','Coucher de soleil','שקיעה','Zalazak','Zachód słońca','Solnedgång'],
+'Океан':['Ocean','محيط','Акіян','Oceà','海洋','Océan','אוקיינוס','Okean','Ocean','Hav'],
+'Ночь':['Night','ليل','Ноч','Nit','夜晚','Nuit','לילה','Noć','Noc','Natt'],
+'Галактика':['Galaxy','مجرّة','Галактыка','Galàxia','银河','Galaxie','גלקסיה','Galaksija','Galaktyka','Galax'],
+'Конфета':['Candy','حلوى','Цукерка','Caramel','糖果','Bonbon','סוכריה','Bombona','Cukierek','Godis'],
+'Лайм':['Lime','ليموني','Лайм','Llima','青柠','Citron vert','ליים','Limeta','Limonka','Lime'],
+'Огонь':['Fire','نار','Агонь','Foc','火焰','Feu','אש','Vatra','Ogień','Eld'],
+'Лаванда':['Lavender','خزامى','Лаванда','Lavanda','薰衣草','Lavande','לבנדר','Lavanda','Lawenda','Lavendel'],
+'Нота':['Note','نغمة','Нота','Nota','音符','Note','צליל','Nota','Nuta','Ton'],
+'Аккорд':['Chord','وتر','Акорд','Acord','和弦','Accord','אקורד','Akord','Akord','Ackord'],
+'Колокольчик':['Bell','جرس','Званочак','Campaneta','铃铛','Clochette','פעמון','Zvonce','Dzwonek','Klocka'],
+'Капля':['Drop','قطرة','Кропля','Gota','水滴','Goutte','טיפה','Kap','Kropla','Droppe'],
+'Бамбук':['Bamboo','خيزران','Бамбук','Bambú','竹子','Bambou','במבוק','Bambus','Bambus','Bambu'],
+'Поп':['Pop','فرقعة','Поп','Pop','啵','Pop','פופ','Pop','Pyk','Pop'],
+'Волшебство':['Magic','سحر','Чараўніцтва','Màgia','魔法','Magie','קסם','Magija','Magia','Magi'],
+'Исчезающие сообщения':['Disappearing messages','الرسائل المختفية','Знікальныя паведамленні','Missatges temporals','阅后即焚','Messages éphémères','הודעות נעלמות','Nestajuće poruke','Znikające wiadomości','Försvinnande meddelanden'],
+'Новые сообщения в этом чате будут исчезать через выбранное время. Уже отправленные останутся.':['New messages in this chat will disappear after the chosen time. Messages already sent stay.','ستختفي الرسائل الجديدة بعد المدة المختارة. الرسائل المرسلة تبقى.','Новыя паведамленні знікнуць праз абраны час. Ужо адпраўленыя застануцца.','Els missatges nous desapareixeran després del temps triat. Els enviats es queden.','新消息将在所选时间后消失，已发送的保留。','Les nouveaux messages disparaîtront après le délai choisi. Les messages déjà envoyés restent.','הודעות חדשות ייעלמו אחרי הזמן שנבחר. הודעות שנשלחו יישארו.','Nove poruke će nestati posle izabranog vremena. Poslate ostaju.','Nowe wiadomości znikną po wybranym czasie. Wysłane zostaną.','Nya meddelanden försvinner efter vald tid. Skickade ligger kvar.'],
+'24 часа':['24 hours','24 ساعة','24 гадзіны','24 hores','24小时','24 heures','24 שעות','24 sata','24 godziny','24 timmar'],
+'7 дней':['7 days','7 أيام','7 дзён','7 dies','7天','7 jours','7 ימים','7 dana','7 dni','7 dagar'],
+'90 дней':['90 days','90 يومًا','90 дзён','90 dies','90天','90 jours','90 ימים','90 dana','90 dni','90 dagar'],
+'Закрыть чат':['Lock chat','قفل الدردشة','Закрыць чат','Bloqueja el xat','锁定聊天','Verrouiller','נעילת צ׳אט','Zaključaj čet','Zablokuj czat','Lås chatten'],
+'Медиа, ссылки и документы':['Media, links and docs','الوسائط والروابط والمستندات','Медыя, спасылкі і дакументы','Multimèdia, enllaços i documents','媒体、链接和文件','Médias, liens et documents','מדיה, קישורים ומסמכים','Mediji, linkovi i dokumenti','Multimedia, linki i dokumenty','Media, länkar och dokument'],
+'Медиа':['Media','الوسائط','Медыя','Multimèdia','媒体','Médias','מדיה','Mediji','Multimedia','Media'],
+'Ссылки':['Links','الروابط','Спасылкі','Enllaços','链接','Liens','קישורים','Linkovi','Linki','Länkar'],
+'Документы':['Documents','المستندات','Дакументы','Documents','文件','Documents','מסמכים','Dokumenti','Dokumenty','Dokument'],
+'Фото и видео из этого чата появятся здесь':['Photos and videos from this chat will appear here','ستظهر هنا صور وفيديوهات هذه الدردشة','Фота і відэа з чата з’явяцца тут','Aquí apareixeran les fotos i vídeos del xat','此聊天的照片和视频会显示在这里','Les photos et vidéos de ce chat apparaîtront ici','תמונות וסרטונים מהצ׳אט יופיעו כאן','Ovde će se pojaviti fotografije i video iz četa','Tu pojawią się zdjęcia i filmy z czatu','Foton och videor från chatten visas här'],
+'Избранное':['Starred','المميّزة','Абранае','Destacats','收藏','Favoris','מועדפים','Omiljeno','Ulubione','Stjärnmärkt'],
+'В избранное':['Add to starred','إلى المميّزة','У абранае','A destacats','收藏','Ajouter aux favoris','למועדפים','U omiljeno','Do ulubionych','Stjärnmärk'],
+'Добавить в избранное':['Add to favourites','إضافة إلى المفضلة','Дадаць у абранае','Afegeix a preferits','加入收藏','Ajouter aux favoris','הוספה למועדפים','Dodaj u omiljene','Dodaj do ulubionych','Lägg till i favoriter'],
+'Здесь пока пусто.':['Nothing here yet.','لا شيء هنا بعد.','Тут пакуль пуста.','Encara no hi ha res.','这里还是空的。','Rien ici pour l’instant.','עדיין ריק כאן.','Ovde još nema ničega.','Na razie pusto.','Här är det tomt än.'],
+'Здесь пока пусто':['Nothing here yet','لا شيء هنا بعد','Тут пакуль пуста','Encara no hi ha res','这里还是空的','Rien ici pour l’instant','עדיין ריק כאן','Ovde još nema ničega','Na razie pusto','Här är det tomt än'],
+'Зажмите любое сообщение и нажмите «В избранное».':['Press and hold any message and tap “Add to starred”.','اضغط مطولًا على أي رسالة واختر «إلى المميّزة».','Заціснуце паведамленне і націсніце «У абранае».','Mantén premut un missatge i toca «A destacats».','长按任意消息并点按“收藏”。','Appuyez longuement sur un message puis « Ajouter aux favoris ».','לחצו לחיצה ארוכה על הודעה ובחרו „למועדפים”.','Zadržite poruku i dodirnite „U omiljeno”.','Przytrzymaj wiadomość i wybierz „Do ulubionych”.','Håll in ett meddelande och tryck ”Stjärnmärk”.'],
+'Данные контакта':['Contact info','بيانات جهة الاتصال','Даныя кантакта','Dades del contacte','联系人信息','Infos du contact','פרטי איש קשר','Podaci o kontaktu','Dane kontaktu','Kontaktinfo'],
+'телефон':['phone','الهاتف','тэлефон','telèfon','电话','téléphone','טלефון','telefon','telefon','telefon'],
+'имя пользователя':['username','اسم المستخدم','імя карыстальніка','nom d’usuari','用户名','nom d’utilisateur','שם משתמש','korisničko ime','nazwa użytkownika','användarnamn'],
+'описание':['bio','الوصف','апісанне','descripció','简介','bio','תיאור','opis','opis','bio'],
+'статус':['status','الحالة','статус','estat','状态','statut','סטטוס','status','status','status'],
+'не указан':['not set','غير محدد','не пазначаны','no indicat','未填写','non renseigné','לא צוין','nije naveden','nie podano','inte angivet'],
+'нет описания':['no bio','لا يوجد وصف','няма апісання','sense descripció','暂无简介','pas de bio','אין תיאור','nema opisa','brak opisu','ingen bio'],
+'Экспорт чата':['Export chat','تصدير الدردشة','Экспарт чата','Exporta el xat','导出聊天','Exporter le chat','ייצוא צ׳אט','Izvezi čet','Eksportuj czat','Exportera chatt'],
+'Очистить чат':['Clear chat','مسح الدردشة','Ачысціць чат','Buida el xat','清空聊天','Vider le chat','ניקוי צ׳אט','Očisti čet','Wyczyść czat','Rensa chatten'],
+'Заблокировать контакт':['Block contact','حظر جهة الاتصال','Заблакаваць кантакт','Bloqueja el contacte','屏蔽联系人','Bloquer le contact','חסימת איש קשר','Blokiraj kontakt','Zablokuj kontakt','Blockera kontakt'],
+'Пожаловаться на контакт':['Report contact','الإبلاغ عن جهة الاتصال','Паскардзіцца на кантакт','Denuncia el contacte','举报联系人','Signaler le contact','דיווח על איש קשר','Prijavi kontakt','Zgłoś kontakt','Rapportera kontakt'],
+'Закрепить':['Pin','تثبيت','Замацаваць','Fixa','置顶','Épingler','הצמדה','Zakači','Przypnij','Fäst'],
+'Общие группы':['Groups in common','المجموعات المشتركة','Агульныя групы','Grups en comú','共同群组','Groupes en commun','קבוצות משותפות','Zajedničke grupe','Wspólne grupy','Gemensamma grupper'],
+'Общих групп нет':['No groups in common','لا مجموعات مشتركة','Агульных груп няма','No hi ha grups en comú','没有共同群组','Aucun groupe en commun','אין קבוצות משותפות','Nema zajedničkih grupa','Brak wspólnych grup','Inga gemensamma grupper'],
+'Информация':['Info','معلومات','Інфармацыя','Informació','详情','Infos','מידע','Informacije','Informacje','Info'],
+'Ответить':['Reply','رد','Адказаць','Respon','回复','Répondre','תגובה','Odgovori','Odpowiedz','Svara'],
+'Скопировать':['Copy','نسخ','Скапіяваць','Copia','复制','Copier','העתקה','Kopiraj','Kopiuj','Kopiera'],
+'Поделиться':['Share','مشاركة','Падзяліцца','Comparteix','分享','Partager','שיתוף','Podeli','Udostępnij','Dela'],
+'Скрытый текст':['Hidden text','نص مخفي','Схаваны тэкст','Text ocult','隐藏文字','Texte masqué','טקסט מוסתר','Skriveni tekst','Ukryty tekst','Dold text'],
+'Записать кружочек':['Record a video circle','سجّل فيديو دائريًا','Запісаць кружок','Grava un vídeo rodó','录制视频圆','Enregistrer une bulle vidéo','הקלטת עיגול וידאו','Snimi video krug','Nagraj kółko wideo','Spela in videocirkel'],
+'Удерживайте, чтобы записать голосовое':['Hold to record a voice message','اضغط مطولًا لتسجيل رسالة صوتية','Утрымлівайце, каб запісаць галасавое','Mantén premut per gravar un àudio','按住录制语音','Maintenez pour enregistrer un vocal','החזיקו כדי להקליט הודעה קולית','Držite da snimite glasovnu poruku','Przytrzymaj, aby nagrać głosówkę','Håll in för att spela in'],
+'Эмодзи':['Emoji','الرموز','Эмодзі','Emojis','表情','Émojis','אימוג׳י','Emodži','Emoji','Emoji'],
+'Стикеры':['Stickers','الملصقات','Стыкеры','Adhesius','贴纸','Autocollants','מדבקות','Stikeri','Naklejki','Klistermärken'],
+'Мои':['Mine','خاصتي','Мае','Meus','我的','Les miens','שלי','Moji','Moje','Mina'],
+'Мои стикеры':['My stickers','ملصقاتي','Мае стыкеры','Els meus adhesius','我的贴纸','Mes autocollants','המדבקות שלי','Moji stikeri','Moje naklejki','Mina klistermärken'],
+'Добавьте свои картинки — они появятся в панели стикеров в чатах. Зажмите стикер, чтобы удалить.':['Add your own pictures — they will appear in the sticker panel. Hold a sticker to delete it.','أضف صورك — ستظهر في لوحة الملصقات. اضغط مطولًا للحذف.','Дадайце свае карцінкі — яны з’явяцца ў панэлі стыкераў. Заціснуце, каб выдаліць.','Afegeix les teves imatges — sortiran al tauler d’adhesius. Mantén premut per esborrar.','添加你的图片，它们会出现在贴纸面板中。长按可删除。','Ajoutez vos images — elles apparaîtront dans les autocollants. Appui long pour supprimer.','הוסיפו תמונות משלכם — הן יופיעו בלוח המדבקות. לחיצה ארוכה למחיקה.','Dodajte svoje slike — pojaviće se među stikerima. Zadržite da obrišete.','Dodaj własne obrazki — pojawią się w naklejkach. Przytrzymaj, aby usunąć.','Lägg till egna bilder — de visas bland klistermärkena. Håll in för att radera.'],
+'Енотик':['Raccoon','راكون','Янотык','Ós rentador','小浣熊','Raton laveur','דביבון','Rakun','Szop','Tvättbjörn'],
+'Виноград':['Grapes','عنب','Вінаград','Raïm','葡萄','Raisin','ענבים','Grožđe','Winogrono','Vindruvor'],
+'Вишенки':['Cherries','كرز','Вішанькі','Cireres','樱桃','Cerises','דובדבנים','Trešnje','Wisienki','Körsbär'],
+'Утёнок':['Duckling','بطّة','Качаня','Aneguet','小鸭','Caneton','ברווזון','Pače','Kaczuszka','Ankunge'],
+'Колобок':['Bun','كعكة','Калабок','Bolet','小圆脸','Bouboule','כדורון','Loptica','Kulka','Bullen'],
+'Котик':['Kitty','قطّة','Коцік','Gatet','小猫','Chaton','חתלתול','Mače','Kotek','Kattunge'],
+'Огоньки':['Sparks','شرارات','Агеньчыкі','Espurnes','火花','Étincelles','ניצוצות','Iskrice','Iskierki','Gnistor'],
+'Профиль ':['Profile','الملف الشخصي','Профіль','Perfil','个人资料','Profil','פרופיל','Profil','Profil','Profil'],
+'Выбрать фотографию':['Choose a photo','اختر صورة','Выбраць фота','Tria una foto','选择照片','Choisir une photo','בחירת תמונה','Izaberi fotografiju','Wybierz zdjęcie','Välj foto'],
+'Имя пользователя':['Username','اسم المستخدم','Імя карыстальніка','Nom d’usuari','用户名','Nom d’utilisateur','שם משתמש','Korisničko ime','Nazwa użytkownika','Användarnamn'],
+'Изменить имя':['Edit name','تغيير الاسم','Змяніць імя','Canvia el nom','修改名字','Modifier le nom','עריכת שם','Promeni ime','Zmień imię','Ändra namn'],
+'День рождения':['Birthday','عيد الميلاد','Дзень нараджэння','Aniversari','生日','Anniversaire','יום הולדת','Rođendan','Urodziny','Födelsedag'],
+'Не указан':['Not set','غير محدد','Не пазначаны','No indicat','未填写','Non renseigné','לא צוין','Nije naveden','Nie podano','Inte angivet'],
+'Архив статусов':['Status archive','أرشيف الحالات','Архіў статусаў','Arxiu d’estats','状态存档','Archive des statuts','ארכיון סטטוסים','Arhiva statusa','Archiwum statusów','Statusarkiv'],
+'Иконка приложения':['App icon','أيقونة التطبيق','Значок праграмы','Icona de l’app','应用图标','Icône de l’app','סמל האפליקציה','Ikonica aplikacije','Ikona aplikacji','Appikon'],
+'Классика':['Classic','كلاسيكي','Класіка','Clàssica','经典','Classique','קלאסי','Klasika','Klasyczna','Klassisk'],
+'Код-пароль':['Passcode','رمز المرور','Код-пароль','Codi','密码锁','Code','קוד גישה','Šifra','Kod','Lösenkod'],
+'Не задан':['Not set','غير مضبوط','Не зададзены','Sense definir','未设置','Non défini','לא הוגדר','Nije postavljen','Nie ustawiono','Inte satt'],
+'Анимированные эмодзи':['Animated emoji','رموز متحركة','Анімаваныя эмодзі','Emojis animats','动态表情','Émojis animés','אימוג׳י מונפש','Animirani emodži','Animowane emoji','Animerade emoji'],
+'Архив и закрытые чаты':['Archive and locked chats','الأرشيف والدردشات المقفلة','Архіў і закрытыя чаты','Arxiu i xats bloquejats','归档与锁定聊天','Archives et chats verrouillés','ארכיון וצ׳אטים נעולים','Arhiva i zaključani četovi','Archiwum i zablokowane czaty','Arkiv och låsta chattar'],
+'потяните чаты вниз':['pull the chats down','اسحب الدردشات للأسفل','пацягніце чаты ўніз','estira els xats avall','下拉聊天列表','tirez les chats vers le bas','משכו את הצ׳אטים למטה','povucite četove nadole','pociągnij czaty w dół','dra ner chattarna'],
+'Режим инкогнито':['Incognito mode','وضع التخفي','Рэжым інкогніта','Mode incògnit','无痕模式','Mode incognito','מצב גלישה בסתר','Režim inkognito','Tryb incognito','Inkognitoläge'],
+'Начать режим инкогнито':['Start incognito mode','ابدأ وضع التخفي','Пачаць рэжым інкогніта','Activa el mode incògnit','开启无痕模式','Activer le mode incognito','הפעלת מצב בסתר','Uključi režim inkognito','Włącz tryb incognito','Starta inkognitoläge'],
+'Нет времени сообщений':['No message times','لا أوقات للرسائل','Няма часу паведамленняў','Sense hora als missatges','不显示消息时间','Pas d’heure des messages','ללא זמני הודעות','Bez vremena poruka','Bez godzin wiadomości','Inga meddelandetider'],
+'ни у вас, ни в списке чатов не видно, когда что отправлено':['nobody can see when anything was sent, in chats or the chat list','لا يظهر متى أُرسل أي شيء، لا لديك ولا في القائمة','ні ў вас, ні ў спісе чатаў не відаць, калі што адпраўлена','no es veu quan s’ha enviat res, ni al xat ni a la llista','聊天和列表中都看不到发送时间','on ne voit pas quand un message a été envoyé','לא רואים מתי משהו נשלח, לא בצ׳אט ולא ברשימה','ne vidi se kada je šta poslato','nie widać, kiedy co zostało wysłane','ingen ser när något skickades'],
+'Не видно «в сети»':['“Online” hidden','«متصل» مخفي','Не відаць «у сетцы»','«En línia» ocult','隐藏“在线”','« En ligne » masqué','„מחובר” מוסתר','Ne vidi se „na mreži”','„Online” ukryte','”Online” dolt'],
+'другие не видят, что вы в сети, и вы не видите их статус':['others don’t see you online and you don’t see theirs','لا يرى الآخرون أنك متصل ولا ترى حالتهم','іншыя не бачаць, што вы ў сетцы, і вы не бачыце іх','els altres no et veuen en línia i tu no els veus','别人看不到你在线，你也看不到他们','les autres ne vous voient pas en ligne et inversement','אחרים לא רואים שאת/ה מחובר/ת ואת/ה לא רואה אותם','drugi ne vide da ste na mreži, a vi ne vidite njih','inni nie widzą, że jesteś online, a ty ich','andra ser inte att du är online och du ser inte dem'],
+'Звонки не сохраняются':['Calls aren’t saved','لا تُحفظ المكالمات','Званкі не захоўваюцца','Les trucades no es desen','不保存通话记录','Les appels ne sont pas enregistrés','שיחות לא נשמרות','Pozivi se ne čuvaju','Połączenia nie są zapisywane','Samtal sparas inte'],
+'в журнале не будет, кому и когда вы звонили':['the call log won’t show whom and when you called','لن يظهر في السجل من اتصلت به ومتى','у журнале не будзе, каму і калі вы званілі','el registre no mostrarà a qui ni quan has trucat','通话记录中不会显示你给谁打过电话','le journal n’affichera pas qui vous avez appelé ni quand','ביומן לא יופיע למי ומתי התקשרת','u evidenciji neće pisati koga ste i kada zvali','w historii nie będzie, do kogo i kiedy dzwoniłeś','samtalsloggen visar inte vem eller när du ringde'],
+'После завершения всё стирается':['Everything is wiped when you end it','يُمحى كل شيء عند الإنهاء','Пасля завяршэння ўсё сціраецца','En acabar, tot s’esborra','结束后全部清除','Tout est effacé à la fin','בסיום הכול נמחק','Po završetku sve se briše','Po zakończeniu wszystko jest kasowane','Allt raderas när du avslutar'],
+'все сообщения и звонки за это время удаляются у вас и у собеседника':['all messages and calls from that time are deleted for you and the other person','تُحذف كل الرسائل والمكالمات لديك ولدى الطرف الآخر','усе паведамленні і званкі за гэты час выдаляюцца ў вас і ў суразмоўцы','tots els missatges i trucades d’aquest temps s’esborren per a tots dos','这段时间的所有消息和通话会在双方删除','tous les messages et appels de cette période sont supprimés des deux côtés','כל ההודעות והשיחות מהזמן הזה נמחקות אצלך ואצל הצד השני','sve poruke i pozivi iz tog perioda brišu se kod vas i sagovornika','wszystkie wiadomości i połączenia z tego czasu znikają u was obojga','alla meddelanden och samtal från den tiden raderas för er båda'],
+'Завершить':['End','إنهاء','Завяршыць','Acaba','结束','Terminer','סיום','Završi','Zakończ','Avsluta'],
+'Данные и память':['Data and storage','البيانات والتخزين','Даныя і памяць','Dades i emmagatzematge','数据与存储','Données et stockage','נתונים ואחסון','Podaci i memorija','Dane i pamięć','Data och lagring'],
+'Фото в чатах':['Photos in chats','الصور في الدردشات','Фота ў чатах','Fotos als xats','聊天中的照片','Photos des chats','תמונות בצ׳אטים','Fotografije u četovima','Zdjęcia w czatach','Foton i chattar'],
+'Видео и кружки':['Videos and circles','الفيديو والدوائر','Відэа і кружкі','Vídeos i cercles','视频和视频圆','Vidéos et bulles','סרטונים ועיגולים','Video i krugovi','Filmy i kółka','Videor och cirklar'],
+'Музыка каналов':['Channel music','موسيقى القنوات','Музыка каналаў','Música dels canals','频道音乐','Musique des chaînes','מוזיקת ערוצים','Muzika kanala','Muzyka kanałów','Kanalmusik'],
+'Старые аватарки':['Old profile photos','الصور القديمة','Старыя аватаркі','Fotos de perfil antigues','旧头像','Anciennes photos','תמונות פרופיל ישנות','Stare profilne slike','Stare awatary','Gamla profilbilder'],
+'Очистить кэш видео':['Clear video cache','مسح ذاكرة الفيديو','Ачысціць кэш відэа','Buida la memòria de vídeos','清除视频缓存','Vider le cache vidéo','ניקוי מטמון וידאו','Očisti keš videa','Wyczyść pamięć filmów','Rensa videocache'],
+'Очистить копии фото и голосовых':['Clear photo and voice copies','مسح نسخ الصور والصوت','Ачысціць копіі фота і галасавых','Esborra còpies de fotos i àudios','清除照片和语音副本','Effacer les copies photos et vocaux','ניקוי עותקי תמונות והקלטות','Očisti kopije slika i glasovnih','Wyczyść kopie zdjęć i głosówek','Rensa kopior av foton och röst'],
+'Удалить музыку каналов':['Delete channel music','حذف موسيقى القنوات','Выдаліць музыку каналаў','Esborra la música dels canals','删除频道音乐','Supprimer la musique des chaînes','מחיקת מוזיקת ערוצים','Obriši muziku kanala','Usuń muzykę kanałów','Radera kanalmusik'],
+'загрузятся снова':['will load again','سيُعاد التحميل','загрузяцца зноў','es tornaran a carregar','会重新加载','se rechargeront','ייטענו שוב','učitaće se ponovo','załadują się ponownie','laddas igen'],
+'в общих чатах':['in shared chats','في الدردشات المشتركة','у агульных чатах','als xats compartits','在共享聊天中','dans les chats partagés','בצ׳אטים משותפים','u zajedničkim četovima','we wspólnych czatach','i delade chattar'],
+'Переписка в общих чатах хранится на сервере — после очистки фото и видео подгрузятся заново, когда вы откроете чат.':['Shared chats are kept on the server — photos and videos load again when you open the chat.','الدردشات المشتركة محفوظة على الخادم — ستُحمّل الصور والفيديو عند فتح الدردشة.','Агульныя чаты захоўваюцца на серверы — фота і відэа загрузяцца, калі адкрыеце чат.','Els xats compartits es guarden al servidor — fotos i vídeos es carregaran en obrir el xat.','共享聊天保存在服务器上，打开聊天时照片和视频会重新加载。','Les chats partagés restent sur le serveur — photos et vidéos se rechargent à l’ouverture.','צ׳אטים משותפים שמורים בשרת — תמונות וסרטונים ייטענו כשתפתחו את הצ׳אט.','Zajednički četovi se čuvaju na serveru — slike i video će se učitati kad otvorite čet.','Wspólne czaty są na serwerze — zdjęcia i filmy wczytają się po otwarciu czatu.','Delade chattar sparas på servern — foton och videor laddas när du öppnar chatten.'],
+'Проверка звука':['Sound check','فحص الصوت','Праверка гуку','Prova de so','声音检测','Test du son','בדיקת צליל','Provera zvuka','Test dźwięku','Ljudtest'],
+'1. Динамик':['1. Speaker','1. مكبر الصوت','1. Дынамік','1. Altaveu','1. 扬声器','1. Haut-parleur','1. רמקול','1. Zvučnik','1. Głośnik','1. Högtalare'],
+'2. Микрофон':['2. Microphone','2. الميكروفون','2. Мікрафон','2. Micròfon','2. 麦克风','2. Micro','2. מיקרופון','2. Mikrofon','2. Mikrofon','2. Mikrofon'],
+'▶ Проиграть сигнал':['▶ Play a tone','▶ تشغيل نغمة','▶ Прайграць сігнал','▶ Reprodueix un to','▶ 播放提示音','▶ Jouer un son','▶ השמעת צליל','▶ Pusti signal','▶ Odtwórz sygnał','▶ Spela ton'],
+'🎤 Записать 3 секунды':['🎤 Record 3 seconds','🎤 سجّل 3 ثوانٍ','🎤 Запісаць 3 секунды','🎤 Grava 3 segons','🎤 录制3秒','🎤 Enregistrer 3 secondes','🎤 הקלטה של 3 שניות','🎤 Snimi 3 sekunde','🎤 Nagraj 3 sekundy','🎤 Spela in 3 sekunder'],
+'Слышно':['I hear it','أسمعه','Чуваць','S’hi sent','听得到','J’entends','שומע/ת','Čuje se','Słychać','Jag hör'],
+'Не слышно':['Can’t hear','لا أسمع','Не чуваць','No s’hi sent','听不到','Je n’entends pas','לא שומע/ת','Ne čuje se','Nie słychać','Hör inte'],
+'Нажмите и послушайте короткий сигнал. Если не слышно — прибавьте громкость кнопками на боку телефона, пока звучит.':['Tap and listen to a short tone. If you can’t hear it, turn the volume up with the side buttons while it plays.','اضغط واستمع لنغمة قصيرة. إن لم تسمعها ارفع الصوت أثناء التشغيل.','Націсніце і паслухайце кароткі сігнал. Калі не чуваць — дадайце гучнасць бакавымі кнопкамі.','Toca i escolta un to curt. Si no el sents, apuja el volum mentre sona.','点按并收听短提示音。听不到时请在播放时调高音量。','Appuyez et écoutez un court son. Sinon, montez le volume pendant la lecture.','לחצו והקשיבו לצליל קצר. אם לא שומעים — הגבירו בזמן ההשמעה.','Dodirnite i poslušajte kratak signal. Ako se ne čuje, pojačajte zvuk dok svira.','Dotknij i posłuchaj krótkiego sygnału. Jeśli nie słychać, podgłośnij w trakcie.','Tryck och lyssna på en kort ton. Hör du inget, höj volymen medan den spelas.'],
+'Нажмите и скажите что-нибудь 3 секунды. Потом запись проиграется.':['Tap and say something for 3 seconds. Then the recording plays back.','اضغط وقل شيئًا لمدة 3 ثوانٍ، ثم سيُعاد التسجيل.','Націсніце і скажыце нешта 3 секунды. Потым запіс прайграецца.','Toca i digues alguna cosa 3 segons. Després se sentirà la gravació.','点按并说3秒钟，然后会回放录音。','Appuyez et parlez 3 secondes. L’enregistrement sera rejoué.','לחצו ואמרו משהו 3 שניות. אחר כך ההקלטה תושמע.','Dodirnite i recite nešto 3 sekunde. Zatim se snimak pušta.','Dotknij i mów przez 3 sekundy. Potem nagranie się odtworzy.','Tryck och säg något i 3 sekunder. Sedan spelas inspelningen upp.'],
+'Данные для проверки':['Diagnostic details','بيانات الفحص','Даныя для праверкі','Dades de diagnòstic','诊断信息','Données de diagnostic','נתוני בדיקה','Podaci za proveru','Dane diagnostyczne','Diagnostikdata'],
+'Сделайте скриншот этого экрана после обоих шагов и пришлите — по нему видно, где пропадает звук.':['Take a screenshot after both steps and send it — it shows where the sound gets lost.','التقط صورة للشاشة بعد الخطوتين وأرسلها لمعرفة مكان المشكلة.','Зрабіце скрыншот пасля абодвух крокаў і дашліце — так відаць, дзе знікае гук.','Fes una captura després dels dos passos i envia-la — mostra on es perd el so.','完成两步后截图发送，可看出声音在哪一步丢失。','Faites une capture après les deux étapes et envoyez-la.','צלמו מסך אחרי שני השלבים ושלחו — כך רואים איפה הצליל נעלם.','Napravite snimak ekrana posle oba koraka i pošaljite ga.','Zrób zrzut ekranu po obu krokach i wyślij go.','Ta en skärmbild efter båda stegen och skicka den.'],
+'О мессенджере':['About','حول التطبيق','Пра месенджар','Quant a','关于','À propos','אודות','O aplikaciji','O aplikacji','Om appen'],
+'Переписка, звонки, голосовые и кружочки — между настоящими людьми.':['Chats, calls, voice messages and video circles — between real people.','دردشات ومكالمات ورسائل صوتية — بين أشخاص حقيقيين.','Перапіска, званкі, галасавыя і кружкі — паміж сапраўднымі людзьмі.','Xats, trucades, àudios i vídeos rodons — entre persones reals.','聊天、通话、语音和视频圆——在真实的人之间。','Discussions, appels, vocaux et bulles vidéo — entre vraies personnes.','צ׳אטים, שיחות, הודעות קוליות ועיגולי וידאו — בין אנשים אמיתיים.','Četovi, pozivi, glasovne poruke i video krugovi — između stvarnih ljudi.','Czaty, połączenia, głosówki i kółka wideo — między prawdziwymi ludźmi.','Chattar, samtal, röst och videocirklar — mellan riktiga människor.'],
+'В каналах часть подписчиков, просмотров, реакций и голосов в опросах добавляют боты-фанаты, чтобы каналы росли живее.':['In channels, some subscribers, views, reactions and poll votes come from fan bots, to make channels feel livelier.','في القنوات، تضيف روبوتات المعجبين جزءًا من المشتركين والمشاهدات والتفاعلات.','У каналах частку падпісчыкаў, праглядаў і рэакцый дадаюць боты-фанаты.','Als canals, una part dels subscriptors, visualitzacions i reaccions la posen bots fans.','频道中部分订阅、浏览、反应和投票来自粉丝机器人。','Dans les chaînes, une partie des abonnés, vues et réactions vient de bots fans.','בערוצים חלק מהמנויים, הצפיות והתגובות מגיעים מבוטים של מעריצים.','U kanalima deo pratilaca, pregleda i reakcija dodaju botovi-fanovi.','W kanałach część subskrybentów, wyświetleń i reakcji dodają boty-fani.','I kanaler kommer en del prenumeranter, visningar och reaktioner från fanbotar.'],
+'Заблокированные':['Blocked','المحظورون','Заблакаваныя','Bloquejats','已屏蔽','Bloqués','חסומים','Blokirani','Zablokowani','Blockerade'],
+'Выйти из аккаунта':['Log out','تسجيل الخروج','Выйсці з акаўнта','Tanca la sessió','退出登录','Se déconnecter','התנתקות','Odjavi se','Wyloguj się','Logga ut'],
+'Выйти':['Log out','خروج','Выйсці','Surt','退出','Déconnexion','יציאה','Odjavi se','Wyloguj','Logga ut'],
+'Удалить аккаунт':['Delete account','حذف الحساب','Выдаліць акаўнт','Suprimeix el compte','删除账号','Supprimer le compte','מחיקת חשבון','Obriši nalog','Usuń konto','Radera konto'],
+'Язык':['Language','اللغة','Мова','Idioma','语言','Langue','שפה','Jezik','Język','Språk'],
+'Здесь будут ваши звонки':['Your calls will be here','ستظهر مكالماتك هنا','Тут будуць вашы званкі','Aquí hi haurà les teves trucades','你的通话会显示在这里','Vos appels apparaîtront ici','השיחות שלך יופיעו כאן','Ovde će biti vaši pozivi','Tu będą twoje połączenia','Här visas dina samtal'],
+'Позвоните кому-нибудь — нажмите на трубку справа вверху или в чате.':['Call someone — tap the handset at the top right or in a chat.','اتصل بأحد — اضغط على السماعة أعلى اليمين أو في الدردشة.','Патэлефануйце каму-небудзь — націсніце на трубку ўверсе або ў чаце.','Truca a algú — toca l’auricular a dalt a la dreta o al xat.','给某人打电话——点右上角或聊天中的听筒。','Appelez quelqu’un — touchez le combiné en haut à droite ou dans un chat.','התקשרו למישהו — לחצו על השפופרת למעלה או בצ׳אט.','Pozovite nekoga — dodirnite slušalicu gore desno ili u četu.','Zadzwoń do kogoś — dotknij słuchawki w rogu lub w czacie.','Ring någon — tryck på luren uppe till höger eller i en chatt.'],
+'Пропущенные':['Missed','الفائتة','Прапушчаныя','Perdudes','未接','Manqués','שלא נענו','Propušteni','Nieodebrane','Missade'],
+'Новый звонок':['New call','مكالمة جديدة','Новы званок','Trucada nova','新通话','Nouvel appel','שיחה חדשה','Novi poziv','Nowe połączenie','Nytt samtal'],
+'Позвонить':['Call','اتصال','Патэлефанаваць','Truca','拨打','Appeler','חיוג','Pozovi','Zadzwoń','Ring'],
+'Начать звонок':['Start a call','بدء مكالمة','Пачаць званок','Comença una trucada','发起通话','Lancer un appel','התחלת שיחה','Započni poziv','Rozpocznij połączenie','Starta samtal'],
+'Звонок…':['Calling…','جارٍ الاتصال…','Званок…','Trucant…','呼叫中…','Appel…','מחייג…','Poziva se…','Dzwonię…','Ringer…'],
+'Звонок отменён':['Call cancelled','أُلغيت المكالمة','Званок скасаваны','Trucada cancel·lada','通话已取消','Appel annulé','השיחה בוטלה','Poziv otkazan','Połączenie anulowane','Samtal avbrutet'],
+'Отменённый звонок':['Cancelled call','مكالمة ملغاة','Скасаваны званок','Trucada cancel·lada','已取消的通话','Appel annulé','שיחה שבוטלה','Otkazan poziv','Anulowane połączenie','Avbrutet samtal'],
+'Свернуть':['Minimize','تصغير','Згарнуць','Minimitza','最小化','Réduire','מזעור','Umanji','Zminimalizuj','Minimera'],
+'🔒 Сквозное шифрование':['🔒 End-to-end encryption','🔒 تشفير تام','🔒 Скразное шыфраванне','🔒 Xifratge d’extrem a extrem','🔒 端到端加密','🔒 Chiffrement de bout en bout','🔒 הצפנה מקצה לקצה','🔒 Šifrovanje s kraja na kraj','🔒 Szyfrowanie end-to-end','🔒 Totalsträckskryptering'],
+'Динамик':['Speaker','مكبر الصوت','Дынамік','Altaveu','扬声器','Haut-parleur','רמקול','Zvučnik','Głośnik','Högtalare'],
+'Микрофон':['Microphone','الميكروفون','Мікрафон','Micròfon','麦克风','Micro','מיקרופון','Mikrofon','Mikrofon','Mikrofon'],
+'Новый канал':['New channel','قناة جديدة','Новы канал','Canal nou','新频道','Nouvelle chaîne','ערוץ חדש','Novi kanal','Nowy kanał','Ny kanal'],
+'Новая группа':['New group','مجموعة جديدة','Новая група','Grup nou','新群组','Nouveau groupe','קבוצה חדשה','Nova grupa','Nowa grupa','Ny grupp'],
+'Новый контакт':['New contact','جهة اتصال جديدة','Новы кантакт','Contacte nou','新联系人','Nouveau contact','איש קשר חדש','Novi kontakt','Nowy kontakt','Ny kontakt'],
+'Создать канал':['Create channel','إنشاء قناة','Стварыць канал','Crea un canal','创建频道','Créer la chaîne','יצירת ערוץ','Napravi kanal','Utwórz kanał','Skapa kanal'],
+'Создать группу':['Create group','إنشاء مجموعة','Стварыць групу','Crea un grup','创建群组','Créer le groupe','יצירת קבוצה','Napravi grupu','Utwórz grupę','Skapa grupp'],
+'Название канала':['Channel name','اسم القناة','Назва канала','Nom del canal','频道名称','Nom de la chaîne','שם הערוץ','Naziv kanala','Nazwa kanału','Kanalnamn'],
+'Название группы':['Group name','اسم المجموعة','Назва групы','Nom del grup','群组名称','Nom du groupe','שם הקבוצה','Naziv grupe','Nazwa grupy','Gruppnamn'],
+'Описание':['Description','الوصف','Апісанне','Descripció','描述','Description','תיאור','Opis','Opis','Beskrivning'],
+'Можно добавить описание канала. Подписчики не увидят, кто публикует посты — писать вам в личку не смогут.':['You can add a description. Subscribers won’t see who posts and can’t message you privately.','يمكنك إضافة وصف. لن يرى المشتركون من ينشر ولن يراسلوك.','Можна дадаць апісанне. Падпісчыкі не ўбачаць, хто публікуе.','Pots afegir una descripció. Els subscriptors no veuran qui publica.','可以添加简介。订阅者看不到发帖人，也无法私信你。','Vous pouvez ajouter une description. Les abonnés ne verront pas qui publie.','אפשר להוסיף תיאור. המנויים לא יראו מי מפרסם.','Možete dodati opis. Pratioci neće videti ko objavljuje.','Możesz dodać opis. Subskrybenci nie zobaczą, kto publikuje.','Du kan lägga till en beskrivning. Prenumeranter ser inte vem som postar.'],
+'Участники':['Members','الأعضاء','Удзельнікі','Membres','成员','Membres','משתתפים','Članovi','Uczestnicy','Medlemmar'],
+'Имя':['Name','الاسم','Імя','Nom','名字','Nom','שם','Ime','Imię','Namn'],
+'Телефон':['Phone','الهاتف','Тэлефон','Telèfon','电话','Téléphone','טלפון','Telefon','Telefon','Telefon'],
+'О себе':['About me','نبذة عني','Пра сябе','Sobre mi','个人简介','À propos de moi','עליי','O meni','O mnie','Om mig'],
+'Найти человека':['Find a person','ابحث عن شخص','Знайсці чалавека','Troba una persona','查找用户','Trouver une personne','חיפוש אדם','Nađi osobu','Znajdź osobę','Hitta en person'],
+'Найден по @нику':['Found by @username','وُجد عبر @الاسم','Знойдзены па @ніку','Trobat per @nom','通过@用户名找到','Trouvé par @pseudo','נמצא לפי @שם','Pronađen po @nadimku','Znaleziono po @nicku','Hittad via @namn'],
+'Глобальный поиск':['Global search','بحث شامل','Глабальны пошук','Cerca global','全局搜索','Recherche globale','חיפוש כללי','Globalna pretraga','Wyszukiwanie globalne','Global sökning'],
+'Попросите друга сказать его @ник — он есть в его Настройках.':['Ask your friend for their @username — it’s in their Settings.','اطلب من صديقك @اسمه — موجود في إعداداته.','Папрасіце сябра сказаць яго @нік — ён ёсць у Наладах.','Demana al teu amic el seu @nom — és a la Configuració.','请朋友告诉你他的@用户名——在他的设置里。','Demandez son @pseudo à votre ami — il est dans ses Réglages.','בקשו מחבר את ה@שם שלו — הוא בהגדרות.','Zamolite prijatelja za @nadimak — u Podešavanjima je.','Poproś znajomego o jego @nick — jest w Ustawieniach.','Be din vän om sitt @namn — det finns i Inställningar.'],
+'Никого нет 🙂':['Nobody yet 🙂','لا أحد بعد 🙂','Нікога няма 🙂','Encara ningú 🙂','还没有人 🙂','Personne pour l’instant 🙂','אין אף אחד 🙂','Nema nikoga 🙂','Nikogo nie ma 🙂','Ingen än 🙂'],
+'Чаты и контакты':['Chats and contacts','الدردشات وجهات الاتصال','Чаты і кантакты','Xats i contactes','聊天与联系人','Discussions et contacts','צ׳אטים ואנשי קשר','Četovi i kontakti','Czaty i kontakty','Chattar och kontakter'],
+'Найдите друга по @нику или канал по названию в поиске сверху.':['Find a friend by @username or a channel by name in the search above.','ابحث عن صديق عبر @الاسم أو عن قناة بالاسم.','Знайдзіце сябра па @ніку ці канал па назве ў пошуку.','Troba un amic per @nom o un canal pel nom a la cerca.','在上方搜索中按@用户名找朋友或按名称找频道。','Trouvez un ami par @pseudo ou une chaîne par son nom.','חפשו חבר לפי @שם או ערוץ לפי שם.','Nađite prijatelja po @nadimku ili kanal po nazivu.','Znajdź znajomego po @nicku lub kanał po nazwie.','Hitta en vän via @namn eller en kanal via namn.'],
+'Потяните вниз — архив':['Pull down — archive','اسحب للأسفل — الأرشيف','Пацягніце ўніз — архіў','Estira avall — arxiu','下拉——归档','Tirez vers le bas — archives','משכו למטה — ארכיון','Povucite nadole — arhiva','Pociągnij w dół — archiwum','Dra ner — arkiv'],
+'Здесь пока нет сообщений.':['No messages here yet.','لا رسائل هنا بعد.','Тут пакуль няма паведамленняў.','Encara no hi ha missatges.','这里还没有消息。','Pas encore de messages.','עדיין אין כאן הודעות.','Ovde još nema poruka.','Brak wiadomości.','Inga meddelanden än.'],
+'Напишите что-нибудь 👋':['Say something 👋','اكتب شيئًا 👋','Напішыце што-небудзь 👋','Escriu alguna cosa 👋','说点什么 👋','Écrivez quelque chose 👋','כתבו משהו 👋','Napišite nešto 👋','Napisz coś 👋','Skriv något 👋'],
+'Похожие каналы':['Similar channels','قنوات مشابهة','Падобныя каналы','Canals semblants','相似频道','Chaînes similaires','ערוצים דומים','Slični kanali','Podobne kanały','Liknande kanaler'],
+'Анонимный опрос':['Anonymous poll','استطلاع مجهول','Ананімнае апытанне','Enquesta anònima','匿名投票','Sondage anonyme','סקר אנונימי','Anonimna anketa','Anonimowa ankieta','Anonym omröstning'],
+'Только администратор':['Admin only','للمشرف فقط','Толькі адміністратар','Només l’administrador','仅管理员','Admin uniquement','מנהל בלבד','Samo administrator','Tylko administrator','Endast admin'],
+'Новый статус':['New status','حالة جديدة','Новы статус','Estat nou','新状态','Nouveau statut','סטטוס חדש','Novi status','Nowy status','Ny status'],
+'Напишите статус…':['Write a status…','اكتب حالة…','Напішыце статус…','Escriu un estat…','写个状态…','Écrivez un statut…','כתבו סטטוס…','Napišite status…','Napisz status…','Skriv en status…'],
+'Опубликовать':['Post','نشر','Апублікаваць','Publica','发布','Publier','פרסום','Objavi','Opublikuj','Publicera'],
+'Кто увидит статус':['Who sees the status','من يرى الحالة','Хто ўбачыць статус','Qui veu l’estat','谁能看到','Qui voit le statut','מי יראה את הסטטוס','Ko vidi status','Kto zobaczy status','Vem ser statusen'],
+'👁 Кто увидит:':['👁 Who sees:','👁 من يرى:','👁 Хто ўбачыць:','👁 Qui ho veu:','👁 谁能看到：','👁 Qui voit :','👁 מי יראה:','👁 Ko vidi:','👁 Kto zobaczy:','👁 Vem ser:'],
+'Все мои контакты':['All my contacts','كل جهات اتصالي','Усе мае кантакты','Tots els meus contactes','我的所有联系人','Tous mes contacts','כל אנשי הקשר שלי','Svi moji kontakti','Wszystkie moje kontakty','Alla mina kontakter'],
+'все, с кем вы переписываетесь':['everyone you chat with','كل من تراسلهم','усе, з кім вы перапісваецеся','tothom amb qui xateges','所有和你聊天的人','tous ceux avec qui vous discutez','כל מי שאת/ה מתכתב/ת איתו','svi sa kojima se dopisujete','wszyscy, z którymi piszesz','alla du chattar med'],
+'Все, кроме…':['Everyone except…','الجميع ما عدا…','Усе, акрамя…','Tothom excepte…','除了…之外的所有人','Tous sauf…','כולם חוץ מ…','Svi osim…','Wszyscy oprócz…','Alla utom…'],
+'выберите, кому не показывать':['choose who won’t see it','اختر من لا يراها','выберыце, каму не паказваць','tria a qui no mostrar-ho','选择不给谁看','choisissez qui ne le verra pas','בחרו למי לא להראות','izaberite kome da ne prikažete','wybierz, komu nie pokazywać','välj vem som inte ser den'],
+'Только я — приватный':['Only me — private','أنا فقط — خاص','Толькі я — прыватны','Només jo — privat','仅自己——私密','Moi seul — privé','רק אני — פרטי','Samo ja — privatno','Tylko ja — prywatny','Bara jag — privat'],
+'никто, кроме вас, не увидит':['nobody but you will see it','لن يراها سواك','ніхто, акрамя вас, не ўбачыць','ningú més que tu ho veurà','只有你能看到','personne d’autre ne le verra','אף אחד חוץ ממך לא יראה','niko osim vas neće videti','nikt poza tobą nie zobaczy','ingen utom du ser den'],
+'Нажмите, чтобы записать голосовое':['Tap to record a voice message','اضغط لتسجيل رسالة صوتية','Націсніце, каб запісаць галасавое','Toca per gravar un àudio','点按录制语音','Touchez pour enregistrer un vocal','לחצו להקלטת הודעה קולית','Dodirnite da snimite glasovnu','Dotknij, aby nagrać głosówkę','Tryck för att spela in'],
+'Здесь появятся все ваши статусы — новые сверху':['All your statuses will appear here — newest first','ستظهر هنا كل حالاتك — الأحدث أولًا','Тут з’явяцца ўсе вашы статусы — новыя зверху','Aquí sortiran tots els teus estats — els nous a dalt','你的所有状态会显示在这里，新的在上','Tous vos statuts apparaîtront ici — les récents en haut','כל הסטטוסים שלך יופיעו כאן — החדשים למעלה','Ovde će biti svi vaši statusi — najnoviji gore','Tu pojawią się twoje statusy — najnowsze u góry','Här visas alla dina statusar — nyaste först'],
+'Дата':['Date','التاريخ','Дата','Data','日期','Date','תאריך','Datum','Data','Datum'],
+'В этот день у ваших контактов над статусами появится напоминание поздравить вас.':['On that day your contacts will see a reminder to congratulate you.','في ذلك اليوم سيرى أصدقاؤك تذكيرًا لتهنئتك.','У гэты дзень кантакты ўбачаць напамін павіншаваць вас.','Aquell dia els teus contactes veuran un recordatori per felicitar-te.','那天你的联系人会看到祝福提醒。','Ce jour-là, vos contacts verront un rappel pour vous souhaiter un bon anniversaire.','ביום הזה אנשי הקשר יראו תזכורת לברך אותך.','Tog dana kontakti će videti podsetnik da vam čestitaju.','Tego dnia twoje kontakty zobaczą przypomnienie o życzeniach.','Den dagen ser dina kontakter en påminnelse att gratulera dig.'],
+'Войти':['Log in','تسجيل الدخول','Увайсці','Inicia sessió','登录','Se connecter','כניסה','Prijavi se','Zaloguj się','Logga in'],
+'Вход':['Log in','دخول','Уваход','Inici de sessió','登录','Connexion','כניסה','Prijava','Logowanie','Inloggning'],
+'Регистрация':['Sign up','تسجيل','Рэгістрацыя','Registre','注册','Inscription','הרשמה','Registracija','Rejestracja','Registrera'],
+'Войти через Google':['Sign in with Google','الدخول عبر Google','Увайсці праз Google','Entra amb Google','使用 Google 登录','Continuer avec Google','כניסה עם Google','Prijava preko Google-a','Zaloguj przez Google','Logga in med Google'],
+'Почта':['Email','البريد','Пошта','Correu','邮箱','E-mail','אימייל','Imejl','E-mail','E-post'],
+'Пароль':['Password','كلمة المرور','Пароль','Contrasenya','密码','Mot de passe','סיסמה','Lozinka','Hasło','Lösenord'],
+'Пароль (минимум 6 символов)':['Password (at least 6 characters)','كلمة المرور (6 أحرف على الأقل)','Пароль (мінімум 6 сімвалаў)','Contrasenya (mínim 6 caràcters)','密码（至少6位）','Mot de passe (6 caractères min.)','סיסמה (6 תווים לפחות)','Lozinka (najmanje 6 znakova)','Hasło (min. 6 znaków)','Lösenord (minst 6 tecken)'],
+'Забыли пароль?':['Forgot password?','نسيت كلمة المرور؟','Забыліся пароль?','Has oblidat la contrasenya?','忘记密码？','Mot de passe oublié ?','שכחת סיסמה?','Zaboravili ste lozinku?','Nie pamiętasz hasła?','Glömt lösenordet?'],
+'Создать аккаунт':['Create account','إنشاء حساب','Стварыць акаўнт','Crea un compte','创建账号','Créer un compte','יצירת חשבון','Napravi nalog','Utwórz konto','Skapa konto'],
+'Создайте аккаунт — это бесплатно':['Create an account — it’s free','أنشئ حسابًا — مجانًا','Стварыце акаўнт — гэта бясплатна','Crea un compte — és gratis','创建账号——免费','Créez un compte — c’est gratuit','צרו חשבון — זה בחינם','Napravite nalog — besplatno je','Załóż konto — to nic nie kosztuje','Skapa ett konto — det är gratis'],
+'Войдите, чтобы переписываться с друзьями':['Log in to chat with friends','سجّل الدخول للدردشة مع أصدقائك','Увайдзіце, каб перапісвацца з сябрамі','Inicia sessió per xatejar amb amics','登录以与朋友聊天','Connectez-vous pour discuter avec vos amis','היכנסו כדי להתכתב עם חברים','Prijavite se da se dopisujete s prijateljima','Zaloguj się, aby pisać ze znajomymi','Logga in för att chatta med vänner'],
+'Входя, вы соглашаетесь вести себя уважительно. Спам и оскорбления можно отправить в жалобу — такие аккаунты блокируются.':['By logging in you agree to be respectful. Spam and insults can be reported — such accounts are blocked.','بالدخول توافق على الاحترام. يمكن الإبلاغ عن الإساءة وتُحظر الحسابات.','Уваходзячы, вы згаджаецеся паводзіць сябе паважліва. Спам можна абскардзіць.','En entrar acceptes ser respectuós. L’spam i els insults es poden denunciar.','登录即表示你同意文明交流。垃圾信息和辱骂可举报。','En vous connectant, vous acceptez d’être respectueux. Spam et insultes peuvent être signalés.','בכניסה את/ה מסכים/ה להתנהג בכבוד. אפשר לדווח על ספאם.','Prijavom pristajete na pristojno ponašanje. Spam se može prijaviti.','Logując się, zgadzasz się na kulturalne zachowanie. Spam można zgłaszać.','Genom att logga in lovar du att vara respektfull. Spam kan rapporteras.'],
+'Как вас будут видеть друзья':['How friends will see you','كيف سيراك أصدقاؤك','Як вас будуць бачыць сябры','Com et veuran els amics','朋友会怎样看到你','Comment vos amis vous verront','איך החברים יראו אותך','Kako će vas prijatelji videti','Jak będą cię widzieć znajomi','Så ser dina vänner dig'],
+'@имя пользователя':['@username','@اسم المستخدم','@імя карыстальніка','@nom d’usuari','@用户名','@nom d’utilisateur','@שם משתמש','@korisničko ime','@nazwa użytkownika','@användarnamn'],
+'По нему вас найдут друзья. Только a–z, 0–9 и _':['Friends will find you by it. Only a–z, 0–9 and _','سيجدك أصدقاؤك به. فقط a–z و0–9 و_','Па ім вас знойдуць сябры. Толькі a–z, 0–9 і _','Els amics et trobaran així. Només a–z, 0–9 i _','朋友可通过它找到你。仅限 a–z、0–9 和 _','Vos amis vous trouveront ainsi. Seulement a–z, 0–9 et _','כך החברים ימצאו אותך. רק a–z, 0–9 ו־_','Po njemu će vas naći prijatelji. Samo a–z, 0–9 i _','Po nim znajdą cię znajomi. Tylko a–z, 0–9 i _','Vänner hittar dig med det. Bara a–z, 0–9 och _'],
+'Мессенджер':['Messenger','المراسل','Месенджар','Missatger','信使','Messagerie','מסנג׳ר','Mesindžer','Komunikator','Messenger'],
+'или':['or','أو','або','o','或','ou','או','ili','lub','eller'],
+'Придумайте ваш пароль':['Create your passcode','أنشئ رمزك','Прыдумайце пароль','Crea el teu codi','设置你的密码','Créez votre code','בחרו קוד','Smislite šifru','Wymyśl kod','Välj din kod'],
+'От 3 до 8 цифр, например 228. Потом нажмите ✓':['3 to 8 digits, e.g. 228. Then tap ✓','من 3 إلى 8 أرقام، مثل 228. ثم اضغط ✓','Ад 3 да 8 лічбаў, напрыклад 228. Потым ✓','De 3 a 8 xifres, p. ex. 228. Després ✓','3到8位数字，例如228，然后点✓','De 3 à 8 chiffres, ex. 228. Puis ✓','3 עד 8 ספרות, למשל 228. ואז ✓','Od 3 do 8 cifara, npr. 228. Zatim ✓','Od 3 do 8 cyfr, np. 228. Potem ✓','3 till 8 siffror, t.ex. 228. Tryck sedan ✓'],
+'Латиница, цифры и _ — минимум 5 символов. По нему вас смогут найти.':['Latin letters, digits and _ — at least 5 characters. People can find you by it.','حروف لاتينية وأرقام و_ — 5 أحرف على الأقل.','Лацініца, лічбы і _ — мінімум 5 сімвалаў.','Lletres llatines, xifres i _ — mínim 5 caràcters.','拉丁字母、数字和 _，至少5个字符。','Lettres latines, chiffres et _ — 5 caractères min.','אותיות לטיניות, ספרות ו־_ — לפחות 5 תווים.','Latinica, cifre i _ — najmanje 5 znakova.','Litery łacińskie, cyfry i _ — min. 5 znaków.','Latinska bokstäver, siffror och _ — minst 5 tecken.'],
+'@имя пользователя (латиница, 5–32)':['@username (Latin, 5–32)','@اسم المستخدم (5–32)','@імя (лацініца, 5–32)','@nom (llatí, 5–32)','@用户名（拉丁，5–32）','@pseudo (latin, 5–32)','@שם (לטינית, 5–32)','@korisničko ime (latinica, 5–32)','@nazwa (łac., 5–32)','@namn (latin, 5–32)'],
+'Вниз':['Down','للأسفل','Уніз','Avall','向下','En bas','למטה','Dole','W dół','Ner'],
+'Удивительный цифровой цирк':['The Amazing Digital Circus','السيرك الرقمي المذهل','Дзівосны лічбавы цырк','L’increïble circ digital','神奇数字马戏团','L’Incroyable Cirque numérique','הקרקס הדיגיטלי המופלא','Neverovatni digitalni cirkus','Niesamowity cyfrowy cyrk','Den fantastiska digitala cirkusen'],
+'Очень странные дела':['Stranger Things','أشياء غريبة','Вельмі дзіўныя справы','Stranger Things','怪奇物语','Stranger Things','דברים מוזרים','Stranger Things','Stranger Things','Stranger Things'],
+'Дроны-убийцы':['Murder Drones','الطائرات القاتلة','Дроны-забойцы','Murder Drones','杀手无人机','Murder Drones','רחפנים רוצחים','Dronovi ubice','Murder Drones','Murder Drones'],
+'Майнкрафт':['Minecraft','ماينكرافت','Майнкрафт','Minecraft','我的世界','Minecraft','מיינקראפט','Majnkraft','Minecraft','Minecraft'],
+'Тип канала':['Channel type','نوع القناة','Тып канала','Tipus de canal','频道类型','Type de chaîne','סוג הערוץ','Tip kanala','Typ kanału','Kanaltyp'],
+'Тип группы':['Group type','نوع المجموعة','Тып групы','Tipus de grup','群组类型','Type de groupe','סוג הקבוצה','Tip grupe','Typ grupy','Grupptyp'],
+'Публичный':['Public','عام','Публічны','Públic','公开','Public','ציבורי','Javni','Publiczny','Offentlig'],
+'Приватный':['Private','خاص','Прыватны','Privat','私密','Privé','פרטי','Privatni','Prywatny','Privat'],
+'Чат канала':['Channel chat','دردشة القناة','Чат канала','Xat del canal','频道聊天','Chat de la chaîne','צ׳אט הערוץ','Čet kanala','Czat kanału','Kanalchatt'],
+'Музыка канала':['Channel music','موسيقى القناة','Музыка канала','Música del canal','频道音乐','Musique de la chaîne','מוזיקת הערוץ','Muzika kanala','Muzyka kanału','Kanalmusik'],
+'Редактировать канал':['Edit channel','تعديل القناة','Рэдагаваць канал','Edita el canal','编辑频道','Modifier la chaîne','עריכת ערוץ','Uredi kanal','Edytuj kanał','Redigera kanal'],
+'Вкл. звук':['Unmute','تشغيل الصوت','Укл. гук','Activa el so','取消静音','Activer le son','ביטול השתקה','Uključi zvuk','Włącz dźwięk','Ljud på'],
+'Удалить у меня':['Delete for me','احذف لديّ','Выдаліць у мяне','Esborra per a mi','仅为我删除','Supprimer pour moi','מחיקה אצלי','Obriši kod mene','Usuń u mnie','Radera för mig'],
+'Удалить у всех':['Delete for everyone','احذف للجميع','Выдаліць ва ўсіх','Esborra per a tothom','为所有人删除','Supprimer pour tous','מחיקה לכולם','Obriši za sve','Usuń u wszystkich','Radera för alla'],
+'Очистить у себя':['Clear for me','امسح لديّ','Ачысціць у сябе','Buida per a mi','仅为我清空','Vider pour moi','ניקוי אצלי','Očisti kod mene','Wyczyść u siebie','Rensa för mig'],
+'Очистить у всех':['Clear for everyone','امسح للجميع','Ачысціць ва ўсіх','Buida per a tothom','为所有人清空','Vider pour tous','ניקוי לכולם','Očisti za sve','Wyczyść u wszystkich','Rensa för alla'],
+'Переслать':['Forward','إعادة توجيه','Пераслаць','Reenvia','转发','Transférer','העברה','Prosledi','Przekaż','Vidarebefordra'],
+'Изменить':['Edit','تعديل','Змяніць','Edita','编辑','Modifier','עריכה','Izmeni','Edytuj','Redigera'],
+'Открыть':['Open','فتح','Адкрыць','Obre','打开','Ouvrir','פתיחה','Otvori','Otwórz','Öppna'],
+'Заблокировать':['Block','حظر','Заблакаваць','Bloqueja','屏蔽','Bloquer','חסימה','Blokiraj','Zablokuj','Blockera'],
+'Разблокировать':['Unblock','إلغاء الحظر','Разблакаваць','Desbloqueja','取消屏蔽','Débloquer','ביטול חסימה','Odblokiraj','Odblokuj','Avblockera'],
+'Архив':['Archive','الأرشيف','Архіў','Arxiu','归档','Archives','ארכיון','Arhiva','Archiwum','Arkiv'],
+'В архив':['Archive','إلى الأرشيف','У архіў','A l’arxiu','归档','Archiver','לארכיון','U arhivu','Do archiwum','Arkivera'],
+'Подождите':['Please wait','انتظر','Пачакайце','Espera','请稍候','Patientez','המתינו','Sačekajte','Poczekaj','Vänta'],
+'Голосовое сообщение':['Voice message','رسالة صوتية','Галасавое паведамленне','Missatge de veu','语音消息','Message vocal','הודעה קולית','Glasovna poruka','Wiadomość głosowa','Röstmeddelande'],
+'Стикер':['Sticker','ملصق','Стыкер','Adhesiu','贴纸','Autocollant','מדבקה','Stiker','Naklejka','Klistermärke'],
+'Видеосообщение':['Video message','رسالة فيديو','Відэапаведамленне','Missatge de vídeo','视频消息','Message vidéo','הודעת וידאו','Video poruka','Wiadomość wideo','Videomeddelande'],
+'Опрос':['Poll','استطلاع','Апытанне','Enquesta','投票','Sondage','סקר','Anketa','Ankieta','Omröstning'],
+'Входящий звонок':['Incoming call','مكالمة واردة','Уваходны званок','Trucada entrant','来电','Appel entrant','שיחה נכנסת','Dolazni poziv','Połączenie przychodzące','Inkommande samtal'],
+'Исходящий звонок':['Outgoing call','مكالمة صادرة','Выходны званок','Trucada sortint','去电','Appel sortant','שיחה יוצאת','Odlazni poziv','Połączenie wychodzące','Utgående samtal'],
+'Пропущенный звонок':['Missed call','مكالمة فائتة','Прапушчаны званок','Trucada perduda','未接来电','Appel manqué','שיחה שלא נענתה','Propušten poziv','Nieodebrane połączenie','Missat samtal'],
+'Завершить и стереть':['End and wipe','إنهاء ومسح','Завяршыць і сцерці','Acaba i esborra','结束并清除','Terminer et effacer','סיום ומחיקה','Završi i obriši','Zakończ i wyczyść','Avsluta och radera'],
+'Светлая':['Light','فاتح','Светлая','Clar','浅色','Clair','בהיר','Svetla','Jasny','Ljus'],
+'Тёмная':['Dark','داكن','Цёмная','Fosc','深色','Sombre','כהה','Tamna','Ciemny','Mörk']
+};
+
+/* ===== typed dates ===== */
+const MON_RX=[['янв','jan','sty','gen','ene','јан','jan'],['фев','feb','лют','fev','feb','фeb'],['мар','mar','сак'],['апр','apr','кра','abr','avr'],['мая','май','may','mai','maj','тра','мај'],['июн','jun','чэр','juin','jun','cze','јун'],['июл','jul','ліп','juil','lip','јул'],['авг','aug','жні','ago','aoû','aou','sie','авг'],['сен','sep','вер','set','wrz'],['окт','oct','кас','okt','paź','paz','out'],['ноя','nov','ліс','lis'],['дек','dec','сне','dic','déc','gru','des']];
+function monthOf(w){w=w.toLowerCase();for(let i=0;i<12;i++)if(MON_RX[i].some(p=>w.startsWith(p)))return i+1;return 0}
+function parseDateText(t){t=String(t||'').trim().toLowerCase().replace(/г\.?$|года?$/,'').trim();if(!t)return null;let y=0,m=0,d=0,r;
+  if(r=t.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/)){y=+r[1];m=+r[2];d=+r[3]}
+  else if(r=t.match(/^(\d{1,2})[-./ ](\d{1,2})(?:[-./ ](\d{2,4}))?$/)){d=+r[1];m=+r[2];y=r[3]?+r[3]:0}
+  else if(r=t.match(/^(\d{1,2})\s*([^\d\s.,]+)\.?,?\s*(\d{4})?$/)){d=+r[1];m=monthOf(r[2]);y=r[3]?+r[3]:0}
+  else if(r=t.match(/^([^\d\s.,]+)\.?\s+(\d{1,2}),?\s*(\d{4})?$/)){m=monthOf(r[1]);d=+r[2];y=r[3]?+r[3]:0}
+  else return null;
+  if(y&&y<100)y+=y>40?1900:2000;if(!m||m>12||!d||d>31)return null;
+  const p=n=>String(n).padStart(2,'0');return {y,m,d,md:p(m)+'-'+p(d),iso:y?y+'-'+p(m)+'-'+p(d):''}}
+function bdayText(b){if(!b)return '';const [y,m,d]=b.length>5?b.split('-'):['',...b.split('-')];return (+d)+' '+MONTHS[+m-1]+(y?' '+y:'')}
+
+/* ===== languages ===== */
+const LANGS=[['ru','Русский'],['en','English'],['ar','العربية'],['be','Беларуская'],['ca','Català'],['zh','中文'],['fr','Français'],['he','עברית'],['sr','Српски / Srpski'],['pl','Polski'],['sv','Svenska']];
+const LIDX={en:0,ar:1,be:2,ca:3,zh:4,fr:5,he:6,sr:7,pl:8,sv:9};
+function lang(){return S.lang||'ru'}
+const I18N_MAP=new Map(Object.entries(I18N_D).map(([k,v])=>[k.trim(),v]));
+const MON_L={
+ en:'January February March April May June July August September October November December',
+ ar:'يناير فبراير مارس أبريل مايو يونيو يوليو أغسطس سبتمبر أكتوبر نوفمبر ديسمبر',
+ be:'студзеня лютага сакавіка красавіка мая чэрвеня ліпеня жніўня верасня кастрычніка лістапада снежня',
+ ca:'de_gener de_febrer de_març d’abril de_maig de_juny de_juliol d’agost de_setembre d’octubre de_novembre de_desembre',
+ zh:'1月 2月 3月 4月 5月 6月 7月 8月 9月 10月 11月 12月',
+ fr:'janvier février mars avril mai juin juillet août septembre octobre novembre décembre',
+ he:'בינואר בפברואר במרץ באפריל במאי ביוני ביולי באוגוסט בספטמבר באוקטובר בנובמבר בדצמבר',
+ sr:'januar februar mart april maj jun jul avgust septembar oktobar novembar decembar',
+ pl:'stycznia lutego marca kwietnia maja czerwca lipca sierpnia września października listopada grudnia',
+ sv:'januari februari mars april maj juni juli augusti september oktober november december'};
+function monL(i){return (MON_L[lang()]||'').split(' ')[i].replace(/_/g,' ')}
+function dateL(d,m,y){const L=lang(),mo=monL(m);if(L==='zh')return (y?y+'年':'')+mo+d+'日';if(L==='en')return mo+' '+d+(y?', '+y:'');if(L==='ca')return d+' '+mo+(y?' de '+y:'');if(L==='sr')return d+'. '+mo+(y?' '+y+'.':'');return d+' '+mo+(y?' '+y:'')}
+/* plural-aware words: [one, few, many] */
+const W={
+ en:{min:['minute','minutes','minutes'],h:['hour','hours','hours'],ago:(n,u)=>`last seen ${n} ${u} ago`,rec:'last seen recently',long:'last seen a long time ago',on:d=>'last seen '+d,subs:['subscriber','subscribers','subscribers'],msgs:['message','messages','messages'],votes:['vote','votes','votes'],views:['view','views','views'],mem:['member','members','members'],wait:(n,u,t)=>`Wait ${n} ${u} · ${t}`,bd:n=>`Today is ${n}’s birthday — congratulate them!`,hb:n=>`Happy birthday, ${n}!`,nost:'No statuses on that day',bdsaved:'Birthday saved',bdrm:'Date removed',rm:'Remove date',bad:'Couldn’t read the date. Example: 26 November 2005',hint:'e.g. 26 November 2005 or 26.11.2005',arch:'Type a date, e.g. 26 November 2026'},
+ ar:{min:['دقيقة','دقائق','دقيقة'],h:['ساعة','ساعات','ساعة'],ago:(n,u)=>`آخر ظهور منذ ${n} ${u}`,rec:'آخر ظهور مؤخرًا',long:'آخر ظهور منذ زمن بعيد',on:d=>'آخر ظهور '+d,subs:['مشترك','مشتركين','مشترك'],msgs:['رسالة','رسائل','رسالة'],votes:['صوت','أصوات','صوت'],views:['مشاهدة','مشاهدات','مشاهدة'],mem:['عضو','أعضاء','عضو'],wait:(n,u,t)=>`انتظر ${n} ${u} · ${t}`,bd:n=>`اليوم عيد ميلاد ${n} — هنّئه!`,hb:n=>`عيد ميلاد سعيد يا ${n}!`,nost:'لا حالات في هذا اليوم',bdsaved:'تم حفظ عيد الميلاد',bdrm:'أُزيل التاريخ',rm:'إزالة التاريخ',bad:'تعذّر فهم التاريخ. مثال: 26.11.2005',hint:'مثال: 26.11.2005',arch:'اكتب تاريخًا، مثل 26.11.2026'},
+ be:{min:['хвіліну','хвіліны','хвілін'],h:['гадзіну','гадзіны','гадзін'],ago:(n,u)=>`быў(ла) ${n} ${u} таму`,rec:'быў(ла) нядаўна',long:'быў(ла) вельмі даўно',on:d=>'быў(ла) '+d,subs:['падпісчык','падпісчыкі','падпісчыкаў'],msgs:['паведамленне','паведамленні','паведамленняў'],votes:['голас','галасы','галасоў'],views:['прагляд','прагляды','праглядаў'],mem:['удзельнік','удзельнікі','удзельнікаў'],wait:(n,u,t)=>`Пачакайце ${n} ${u} · ${t}`,bd:n=>`Сёння дзень нараджэння: ${n} — павіншуйце!`,hb:n=>`З днём нараджэння, ${n}!`,nost:'У гэты дзень статусаў не было',bdsaved:'Дзень нараджэння захаваны',bdrm:'Дата прыбрана',rm:'Прыбраць дату',bad:'Не зразумеў дату. Прыклад: 26 лістапада 2005',hint:'напрыклад 26 лістапада 2005 ці 26.11.2005',arch:'Увядзіце дату, напр. 26 лістапада 2026'},
+ ca:{min:['minut','minuts','minuts'],h:['hora','hores','hores'],ago:(n,u)=>`vist fa ${n} ${u}`,rec:'vist fa poc',long:'vist fa molt',on:d=>'vist el '+d,subs:['subscriptor','subscriptors','subscriptors'],msgs:['missatge','missatges','missatges'],votes:['vot','vots','vots'],views:['visualització','visualitzacions','visualitzacions'],mem:['membre','membres','membres'],wait:(n,u,t)=>`Espera ${n} ${u} · ${t}`,bd:n=>`Avui és l’aniversari de ${n} — felicita’l!`,hb:n=>`Per molts anys, ${n}!`,nost:'Aquell dia no hi va haver estats',bdsaved:'Aniversari desat',bdrm:'Data eliminada',rm:'Treu la data',bad:'No entenc la data. Exemple: 26.11.2005',hint:'p. ex. 26 de novembre de 2005 o 26.11.2005',arch:'Escriu una data, p. ex. 26.11.2026'},
+ zh:{min:['分钟','分钟','分钟'],h:['小时','小时','小时'],ago:(n,u)=>`${n}${u}前在线`,rec:'刚刚在线',long:'很久以前在线',on:d=>d+'在线',subs:['位订阅者','位订阅者','位订阅者'],msgs:['条消息','条消息','条消息'],votes:['票','票','票'],views:['次浏览','次浏览','次浏览'],mem:['位成员','位成员','位成员'],wait:(n,u,t)=>`请等待 ${n} ${u} · ${t}`,bd:n=>`今天是 ${n} 的生日——祝贺一下吧！`,hb:n=>`生日快乐，${n}！`,nost:'那天没有状态',bdsaved:'生日已保存',bdrm:'日期已移除',rm:'移除日期',bad:'无法识别日期。例如：2005-11-26',hint:'例如 2005-11-26 或 26.11.2005',arch:'输入日期，例如 2026-11-26'},
+ fr:{min:['minute','minutes','minutes'],h:['heure','heures','heures'],ago:(n,u)=>`vu il y a ${n} ${u}`,rec:'vu récemment',long:'vu il y a longtemps',on:d=>'vu le '+d,subs:['abonné','abonnés','abonnés'],msgs:['message','messages','messages'],votes:['vote','votes','votes'],views:['vue','vues','vues'],mem:['membre','membres','membres'],wait:(n,u,t)=>`Patientez ${n} ${u} · ${t}`,bd:n=>`C’est l’anniversaire de ${n} aujourd’hui — souhaitez-le !`,hb:n=>`Joyeux anniversaire, ${n} !`,nost:'Aucun statut ce jour-là',bdsaved:'Anniversaire enregistré',bdrm:'Date supprimée',rm:'Retirer la date',bad:'Date non reconnue. Exemple : 26 novembre 2005',hint:'ex. 26 novembre 2005 ou 26.11.2005',arch:'Tapez une date, ex. 26 novembre 2026'},
+ he:{min:['דקה','דקות','דקות'],h:['שעה','שעות','שעות'],ago:(n,u)=>`נראה/תה לפני ${n} ${u}`,rec:'נראה/תה לאחרונה',long:'נראה/תה מזמן',on:d=>'נראה/תה '+d,subs:['מנוי','מנויים','מנויים'],msgs:['הודעה','הודעות','הודעות'],votes:['קול','קולות','קולות'],views:['צפייה','צפיות','צפיות'],mem:['משתתף','משתתפים','משתתפים'],wait:(n,u,t)=>`המתינו ${n} ${u} · ${t}`,bd:n=>`היום יום ההולדת של ${n} — ברכו!`,hb:n=>`יום הולדת שמח, ${n}!`,nost:'לא היו סטטוסים ביום הזה',bdsaved:'יום ההולדת נשמר',bdrm:'התאריך הוסר',rm:'הסרת התאריך',bad:'לא הבנתי את התאריך. דוגמה: 26.11.2005',hint:'למשל 26.11.2005',arch:'הקלידו תאריך, למשל 26.11.2026'},
+ sr:{min:['minut','minuta','minuta'],h:['sat','sata','sati'],ago:(n,u)=>`viđen/a pre ${n} ${u}`,rec:'viđen/a nedavno',long:'viđen/a davno',on:d=>'viđen/a '+d,subs:['pratilac','pratioca','pratilaca'],msgs:['poruka','poruke','poruka'],votes:['glas','glasa','glasova'],views:['pregled','pregleda','pregleda'],mem:['član','člana','članova'],wait:(n,u,t)=>`Sačekajte ${n} ${u} · ${t}`,bd:n=>`Danas je rođendan: ${n} — čestitajte!`,hb:n=>`Srećan rođendan, ${n}!`,nost:'Tog dana nije bilo statusa',bdsaved:'Rođendan sačuvan',bdrm:'Datum uklonjen',rm:'Ukloni datum',bad:'Ne razumem datum. Primer: 26. novembar 2005',hint:'npr. 26. novembar 2005 ili 26.11.2005',arch:'Unesite datum, npr. 26. novembar 2026'},
+ pl:{min:['minutę','minuty','minut'],h:['godzinę','godziny','godzin'],ago:(n,u)=>`ostatnio ${n} ${u} temu`,rec:'ostatnio niedawno',long:'ostatnio dawno temu',on:d=>'ostatnio '+d,subs:['subskrybent','subskrybentów','subskrybentów'],msgs:['wiadomość','wiadomości','wiadomości'],votes:['głos','głosy','głosów'],views:['wyświetlenie','wyświetlenia','wyświetleń'],mem:['uczestnik','uczestników','uczestników'],wait:(n,u,t)=>`Poczekaj ${n} ${u} · ${t}`,bd:n=>`Dziś urodziny: ${n} — złóż życzenia!`,hb:n=>`Wszystkiego najlepszego, ${n}!`,nost:'Tego dnia nie było statusów',bdsaved:'Urodziny zapisane',bdrm:'Data usunięta',rm:'Usuń datę',bad:'Nie rozumiem daty. Przykład: 26 listopada 2005',hint:'np. 26 listopada 2005 lub 26.11.2005',arch:'Wpisz datę, np. 26 listopada 2026'},
+ sv:{min:['minut','minuter','minuter'],h:['timme','timmar','timmar'],ago:(n,u)=>`senast sedd för ${n} ${u} sedan`,rec:'senast sedd nyligen',long:'senast sedd för länge sedan',on:d=>'senast sedd '+d,subs:['prenumerant','prenumeranter','prenumeranter'],msgs:['meddelande','meddelanden','meddelanden'],votes:['röst','röster','röster'],views:['visning','visningar','visningar'],mem:['medlem','medlemmar','medlemmar'],wait:(n,u,t)=>`Vänta ${n} ${u} · ${t}`,bd:n=>`Idag fyller ${n} år — gratulera!`,hb:n=>`Grattis på födelsedagen, ${n}!`,nost:'Inga statusar den dagen',bdsaved:'Födelsedag sparad',bdrm:'Datum borttaget',rm:'Ta bort datum',bad:'Förstår inte datumet. Exempel: 26 november 2005',hint:'t.ex. 26 november 2005 eller 26.11.2005',arch:'Skriv ett datum, t.ex. 26 november 2026'}};
+function plw(n,a){const L=lang();n=Math.abs(+String(n).replace(/[^\d.]/g,'')||0);if(['ru','be','sr','pl'].includes(L)){if(L==='pl')return n===1?a[0]:(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?a[1]:a[2];return plural(n,a[0],a[1],a[2])}return n===1?a[0]:a[1]}
+const RUW={min:'минут[уы]?',h:'час(?:а|ов)?'};
+function trDyn(t){const L=lang(),w=W[L];if(!w)return null;let r;
+  if(r=t.match(/^был[а]? (\d+) (минут[уы]?|час(?:а|ов)?) назад$/))return w.ago(r[1],plw(r[1],r[2].startsWith('мин')?w.min:w.h));
+  if(/^был[а]? недавно$/.test(t))return w.rec;if(/^был[а]? очень давно$/.test(t))return w.long;
+  if(r=t.match(/^был[а]? (\d{1,2})\.(\d{2})\.(\d{2,4})$/))return w.on(r[1]+'.'+r[2]+'.'+r[3]);
+  if(r=t.match(/^(\d+) (января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?: (\d{4}))?$/))return dateL(+r[1],MONTHS.indexOf(r[2]),r[3]);
+  if(r=t.match(/^([\d.,\s]+[KКMМ]?) (подписчик(?:а|ов)?)$/))return r[1]+' '+plw(r[1],w.subs);
+  if(r=t.match(/^([\d.,\s]+[KКMМ]?) (сообщени(?:е|я|й))$/))return r[1]+' '+plw(r[1],w.msgs);
+  if(r=t.match(/^([\d.,\s]+[KКMМ]?) (голос(?:а|ов)?)$/))return r[1]+' '+plw(r[1],w.votes);
+  if(r=t.match(/^([\d.,\s]+[KКMМ]?) (просмотр(?:а|ов)?)$/))return r[1]+' '+plw(r[1],w.views);
+  if(r=t.match(/^([\d.,\s]+[KКMМ]?) (участник(?:а|ов)?)$/))return r[1]+' '+plw(r[1],w.mem);
+  if(r=t.match(/^Подождите (\d+) (минут[уы]?|час(?:а|ов)?)\s*·\s*([\d:]+)$/))return w.wait(r[1],plw(r[1],r[2].startsWith('мин')?w.min:w.h),r[3]);
+  if(r=t.match(/^С днём рождения, (.+)!$/))return w.hb(r[1]);
+  if(t==='В этот день статусов не было')return w.nost;if(t==='День рождения сохранён')return w.bdsaved;if(t==='Дата убрана')return w.bdrm;if(t==='Убрать дату')return w.rm;
+  if(t==='Не понял дату. Пример: 26 ноября 2005')return w.bad;if(t==='например 26 ноября 2005 или 26.11.2005')return w.hint;if(t==='Введите дату, напр. 26 ноября 2026')return w.arch;
+  return null}
+const WD_L={en:'Mon Tue Wed Thu Fri Sat Sun',ar:'إثن ثلا أرب خمي جمع سبت أحد',be:'пн аў ср чц пт сб нд',ca:'dl dt dc dj dv ds dg',zh:'周一 周二 周三 周四 周五 周六 周日',fr:'lun mar mer jeu ven sam dim',he:'ב׳ ג׳ ד׳ ה׳ ו׳ ש׳ א׳',sr:'pon uto sre čet pet sub ned',pl:'pn wt śr czw pt sob nd',sv:'mån tis ons tor fre lör sön'};
+const UNIT_L={en:['B','KB','MB','GB','pcs'],ar:['ب','ك.ب','م.ب','ج.ب','عنصر'],zh:['B','KB','MB','GB','个'],he:['B','KB','MB','GB','פריטים'],fr:['o','Ko','Mo','Go','él.'],be:['Б','КБ','МБ','ГБ','шт.']};
+const EXTRA_L={'НОВОСТИ':['NEWS','الأخبار','НАВІНЫ','NOTÍCIES','新闻','ACTUALITÉS','חדשות','VESTI','WIADOMOŚCI','NYHETER'],
+'На iPhone значок на экране «Домой» меняется так: удалите старый значок и добавьте снова — Safari → «Поделиться» → «На экран „Домой“». Новый значок будет с выбранной иконкой.':['On iPhone, to change the Home Screen icon delete the old one and add it again: Safari → Share → Add to Home Screen.','على iPhone احذف الأيقونة القديمة وأضفها مجددًا: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.','На iPhone выдаліце стары значок і дадайце зноў: Safari → «Падзяліцца» → «На экран Дадому».','A l’iPhone, esborra la icona antiga i torna-la a afegir: Safari → Comparteix → Afegeix a la pantalla d’inici.','在 iPhone 上删除旧图标后重新添加：Safari → 分享 → 添加到主屏幕。','Sur iPhone, supprimez l’ancienne icône et ajoutez-la à nouveau : Safari → Partager → Sur l’écran d’accueil.','ב־iPhone מחקו את הסמל הישן והוסיפו שוב: Safari ← שיתוף ← הוספה למסך הבית.','Na iPhone-u obrišite staru ikonicu i dodajte ponovo: Safari → Deli → Dodaj na početni ekran.','Na iPhonie usuń starą ikonę i dodaj ponownie: Safari → Udostępnij → Do ekranu początkowego.','På iPhone: ta bort den gamla ikonen och lägg till igen: Safari → Dela → Lägg till på hemskärmen.']};
+Object.entries(EXTRA_L).forEach(([k,v])=>I18N_MAP.set(k,v));
+function trDyn2(t){const L=lang();let r;
+  const wd='пн вт ср чт пт сб вс'.split(' ');if(wd.includes(t)&&WD_L[L])return WD_L[L].split(' ')[wd.indexOf(t)];
+  if(r=t.match(/^([\d.,]+) (Б|КБ|МБ|ГБ|шт\.)$/)){const u=UNIT_L[L]||UNIT_L.en;return r[1]+' '+u[['Б','КБ','МБ','ГБ','шт.'].indexOf(r[2])]}
+  if(r=t.match(/^занимает мессенджер на этом устройстве · свободно для него ≈ ([\d.,]+) ГБ$/)){const u=UNIT_L[L]||UNIT_L.en;return ({en:'used on this device · free ≈ ',fr:'utilisé sur cet appareil · libre ≈ ',pl:'zajęte na tym urządzeniu · wolne ≈ ',sv:'används på enheten · ledigt ≈ ',zh:'本设备占用 · 可用约 ',ar:'مستخدم على هذا الجهاز · متاح ≈ ',he:'בשימוש במכשיר · פנוי ≈ ',be:'займае на гэтай прыладзе · вольна ≈ ',ca:'ocupat en aquest dispositiu · lliure ≈ ',sr:'zauzeto na uređaju · slobodno ≈ '}[L]||'')+r[1]+' '+u[3]}
+  return null}
+function trStr(s){if(lang()==='ru'||!s||!/[А-Яа-яЁё]/.test(s))return null;const t=s.replace(/\s+/g,' ').trim();const v=I18N_MAP.get(t);let o=v?v[LIDX[lang()]]:(trDyn(t)??trDyn2(t));
+  if(o==null){const m=t.match(/^(.*?)([\s:…·]+)$/);if(m&&I18N_MAP.get(m[1]))o=I18N_MAP.get(m[1])[LIDX[lang()]]+m[2]}
+  if(o==null)return null;const lead=s.match(/^\s*/)[0],tail=s.match(/\s*$/)[0];return lead+o+tail}
+const TR_SKIP='script,style,textarea,.txt,.mtext,.msgtext,.ptitle,.pv,.nm,.sname,.sv-txt,.arc-t,.cname,.u-name,.pf-name,[data-notr]';
+const TRO=new WeakMap();let trBusy=false;
+function trNode(n){const p=n.parentElement;if(!p||p.closest(TR_SKIP))return;if(p.closest('.bubble')&&!p.closest('.meta,.pk,.ptot,.callb,.sys,.mtm'))return;
+  let ru=TRO.get(n);const cur=n.nodeValue;if(ru==null||(ru.out!==cur)){ru={src:cur,out:cur};TRO.set(n,ru)}
+  if(lang()==='ru'){if(cur!==ru.src){n.nodeValue=ru.src;ru.out=ru.src}return}
+  const o=trStr(ru.src);if(o!=null&&o!==cur){n.nodeValue=o;ru.out=o}}
+function trAttrs(el){['placeholder','title','aria-label'].forEach(a=>{if(!el.hasAttribute||!el.hasAttribute(a))return;const k='data-ru-'+a;let src=el.getAttribute(k);const cur=el.getAttribute(a);if(src==null||(el.__tr&&el.__tr[a]!==cur)){src=cur;el.setAttribute(k,src)}
+  const o=lang()==='ru'?src:trStr(src);el.__tr=el.__tr||{};if(o!=null&&o!==cur){el.setAttribute(a,o)}el.__tr[a]=el.getAttribute(a)})}
+function trTree(root){if(!root)return;trBusy=true;try{if(root.nodeType===3){trNode(root);return}
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let n;while(n=w.nextNode())if(/\S/.test(n.nodeValue))trNode(n);
+  if(root.querySelectorAll){trAttrs(root);root.querySelectorAll('[placeholder],[title],[aria-label]').forEach(trAttrs)}}finally{trBusy=false}}
+function applyLang(){const L=lang();document.documentElement.lang=L;document.documentElement.dir=(L==='ar'||L==='he')?'rtl':'ltr';document.body.classList.toggle('rtl',L==='ar'||L==='he');trTree(document.body)}
+let trObs=null;
+function startI18n(){if(trObs)return;trObs=new MutationObserver(ms=>{if(trBusy||lang()==='ru'&&!S.langWas)return;for(const m of ms){if(m.type==='characterData')trTree(m.target);else if(m.type==='attributes')trAttrs(m.target);else m.addedNodes.forEach(trTree)}});
+  trObs.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['placeholder','title','aria-label']});applyLang()}
+function openLanguage(){const cur=lang();
+  openSheet('Язык',`<div class="grp">${LANGS.map(([c,n])=>`<div class="r lang-r" data-l="${c}" data-notr><span class="lang-n">${n}</span>${c===cur?'<span class="v" style="color:var(--accent,#2ea6ff);font-size:20px">✓</span>':''}</div>`).join('')}</div>`,sh=>{
+   sh.querySelectorAll('.lang-r').forEach(r=>r.onclick=()=>{S.lang=r.dataset.l;if(S.lang!=='ru')S.langWas=1;save();closePopups();renderMain();setTimeout(applyLang,50)})})}
+
+setTimeout(()=>{try{startI18n()}catch(e){console.error(e)}},200);
 function ensureFeeds(){
   let ch=false;
   if(S.chats.c1&&!S.chats.c1.owner){delete S.chats.c1;ch=true}
