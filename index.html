@@ -615,6 +615,7 @@ input[type=datetime-local]{color-scheme:dark}
 .vid.round.playing{height:220px}.vid.round video{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .vid.round .vdur{left:50%;top:auto;bottom:12px;transform:translateX(-50%)}
 .rr-ring.pl{pointer-events:none}.rr-ring.pl circle{stroke:#fff;stroke-width:3}
+.vid.round .vplay.rp{display:none;z-index:2}.vid.round.paused .vplay.rp{display:flex}
 </style>
 </head>
 <body>
@@ -1272,6 +1273,7 @@ function textHTML(m){
 }
 function renderMessages(jump){
   const c=S.chats[T.openChat];if(!c)return;
+  setTimeout(()=>prefetchVideos(c),0);
   const box=$('#msgs');
   const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<140;
   const items=[];let lastDay='';
@@ -2212,15 +2214,29 @@ async function videoURL(v){
   const b=new Blob(parts,{type:v.mime||'video/mp4'});IDB.put('v:'+v.fid,b);return VURL[v.fid]=URL.createObjectURL(b);
 }
 function videoHTML(m){const v=m.video;return `<div class="vid" data-vf="${v.fid}">${v.poster?`<img src="${v.poster}" alt="">`:'<div class="vph"></div>'}<span class="vplay">▶</span><span class="vdur">${fmtDur(v.dur||0)}</span></div>`}
-document.addEventListener('click',async e=>{const el=e.target.closest('.vid');if(!el||el.classList.contains('playing'))return;
-  const c=S.chats[T.openChat];const row=el.closest('[data-id]');const m=c&&row&&c.messages.find(x=>x.id===row.dataset.id);if(!m||!m.video)return;
-  el.classList.add('loading');const url=await videoURL(m.video);el.classList.remove('loading');
-  if(!url){toast('Видео ещё загружается — попробуйте через пару секунд');return}
+function playVideoIn(el,m,url){
   el.classList.add('playing');
-  if(m.video.round){el.innerHTML=`<video src="${url}" autoplay playsinline ${m.video.poster?`poster="${m.video.poster}"`:''}></video><svg class="rr-ring pl" viewBox="0 0 100 100"><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg>`;const v=el.querySelector('video'),pr=el.querySelector('.rr-p');
-    v.ontimeupdate=()=>{if(v.duration)pr.style.strokeDashoffset=String(100-v.currentTime/v.duration*100)};v.onended=()=>{el.classList.remove('playing');el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
-    el.onclick=ev=>{ev.stopPropagation();if(v.paused)v.play();else v.pause()};return}
-  el.innerHTML=`<video src="${url}" controls autoplay playsinline ${m.video.poster?`poster="${m.video.poster}"`:''}></video>`;
+  if(m.video.round){
+    el.innerHTML=`<video src="${url}" playsinline webkit-playsinline preload="auto" ${m.video.poster?`poster="${m.video.poster}"`:''}></video><svg class="rr-ring pl" viewBox="0 0 100 100"><circle class="rr-p" cx="50" cy="50" r="48" pathLength="100"/></svg><span class="vplay rp">▶</span>`;
+    const v=el.querySelector('video'),pr=el.querySelector('.rr-p');
+    const go=()=>{const p=v.play();el.classList.remove('paused');if(p&&p.catch)p.catch(()=>el.classList.add('paused'))};
+    v.ontimeupdate=()=>{if(v.duration&&isFinite(v.duration))pr.style.strokeDashoffset=String(100-v.currentTime/v.duration*100)};
+    v.onpause=()=>el.classList.add('paused');v.onplay=()=>el.classList.remove('paused');
+    v.onended=()=>{el.classList.remove('playing','paused');el.onclick=null;el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
+    v.onerror=()=>{toast('Не получилось включить кружочек на этом устройстве');el.classList.remove('playing','paused');el.onclick=null;el.innerHTML=roundHTML(m).replace(/^<div[^>]*>|<\/div>$/g,'')};
+    el.onclick=ev=>{ev.stopPropagation();if(v.paused)go();else v.pause()};
+    go();return}
+  el.innerHTML=`<video src="${url}" controls playsinline webkit-playsinline ${m.video.poster?`poster="${m.video.poster}"`:''}></video>`;
+  const v=el.querySelector('video');const p=v.play();if(p&&p.catch)p.catch(()=>{});
+}
+function prefetchVideos(c){if(!c)return;c.messages.slice(-40).forEach(m=>{if(m.video&&!VURL[m.video.fid])videoURL(m.video).catch(()=>{})})}
+document.addEventListener('click',e=>{const el=e.target.closest('.vid');if(!el||el.classList.contains('playing'))return;
+  const c=S.chats[T.openChat];const row=el.closest('[data-id]');const m=c&&row&&c.messages.find(x=>x.id===row.dataset.id);if(!m||!m.video)return;
+  e.stopPropagation();
+  // ready already: start inside the tap itself, otherwise iPhone refuses to play with sound
+  if(VURL[m.video.fid]){playVideoIn(el,m,VURL[m.video.fid]);return}
+  el.classList.add('loading');
+  videoURL(m.video).then(url=>{el.classList.remove('loading');if(!url){toast('Видео ещё загружается — попробуйте через пару секунд');return}playVideoIn(el,m,url)});
 },true);
 function openAttach(){
   actionSheet('Отправить',[{label:'🖼 Фото',fn:()=>pickImage(d=>sendMessage({img:d,text:''}),900)},{label:'🎬 Видео',fn:()=>setTimeout(pickVideo,250)}]);
@@ -2404,7 +2420,7 @@ async function openRoundRecorder(){
     rec.onstop=()=>{if(stopped==='cancel')return;const type=(rec.mimeType||mime||'video/mp4').split(';')[0];const blob=new Blob(chunks,{type});const dur=Math.round((Date.now()-t0)/1000);close();
       if(dur<1){toast('Слишком коротко — удерживайте запись хотя бы секунду');return}
       const file=new File([blob],'round.'+(type.includes('mp4')?'mp4':'webm'),{type});sendVideo(file,{round:true,poster,dur})};
-    rec.start(500);t0=Date.now();setTimeout(()=>{poster=grab()},400);el.classList.add('on');el.querySelector('.rr-h').textContent='Нажмите ещё раз, чтобы отправить';
+    rec.start();t0=Date.now();setTimeout(()=>{poster=grab()},400);el.classList.add('on');el.querySelector('.rr-h').textContent='Нажмите ещё раз, чтобы отправить';
     timer=setInterval(()=>{const s=(Date.now()-t0)/1000;el.querySelector('#rrTime').textContent=fmtDur(s);el.querySelector('.rr-p').style.strokeDashoffset=String(100-Math.min(100,s/ROUND_MAX*100));if(s>=ROUND_MAX)stop()},200)};
   const stop=()=>{if(!rec||rec.state==='inactive')return;clearInterval(timer);rec.stop()};
   el.querySelector('.rr-go').onclick=()=>{if(!rec)start();else stop()};
