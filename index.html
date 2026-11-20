@@ -1254,6 +1254,7 @@ function openGroupProfile(c){
    ${extraRows(c)}
    <div class="grp">
      ${REAL&&((c.type==='channel'&&c.owner)||(c.type==='group'&&c.remote&&c.admin))?`<div class="r" data-a="privacy"><span class="ico" style="background:${c.public?'#34c759':'#8e8e93'}">${c.public?'🌍':'🔒'}</span>${c.type==='group'?'Тип группы':'Тип канала'}<span class="v">${c.public?'Публичный':'Приватный'}</span></div>`:''}
+     ${c.type==='channel'&&c.owner?((c.subs||0)>=300?`<div class="r" data-a="cchat"><span class="ico" style="background:#34c759">💬</span>Чат канала<span class="v">${chanChatOf(c)?'Открыть':'Создать'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#34c759">💬</span><div class="st-b"><div>Чат канала</div><div class="sm">откроется на 300 подписчиках · сейчас ${c.subs||0}</div></div></div>`):''}
      ${c.type==='channel'&&c.owner?`<div class="r" data-a="edit"><span class="ico" style="background:#34c759">✏️</span>Изменить канал</div>`:''}
      <div class="r ${has?'':'dis'}" data-a="export"><span class="ico" style="background:#5856d6">📤</span>Экспорт чата</div>
      <div class="r red ${admin&&has?'':'dis'}" data-a="clear"><span class="ico" style="background:#ff3b30">🧹</span><div>Очистить чат${admin?'':'<div class="sm">Только администратор</div>'}</div></div>
@@ -1276,6 +1277,7 @@ function openGroupProfile(c){
       if(a==='mute'){c.muted=!c.muted;save();closePopups();renderChatHead();renderChatBottom();toast(c.muted?'Звук выключен':'Звук включён')}
       if(a==='lock'){closePopups();setTimeout(()=>lockFlow(c),300)}
       if(a==='privacy'){closePopups();setTimeout(()=>openPrivacy(c),340)}
+      if(a==='cchat')openChanChat(c);
       if(a==='edit')editChannel(c);
       if(a==='leave'){closePopups();setTimeout(()=>{if(c.pubRid){pubSubscribed(c,false);unwatchPub(c)}c.subscribed=false;if(NOBOTS)c.subs=0;else c.subs=Math.max(0,c.subs-1);save();musicOnClose();closeChat();renderMain();toast('Вы отписались от канала')},300)}
       if(a==='addm')openAddMembers(c);
@@ -1299,9 +1301,9 @@ function renderChatBottom(){
     else{b.innerHTML=`<div class="mutebar${c.feed&&!NOCHAT?' two':''}">${c.feed&&!NOCHAT?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
     $('#panel').classList.remove('open');return;
   }
-  if(c.type==='channel'&&c.owner&&(c.subs||0)>=150&&Date.now()-(c.lastPost||0)<60000){
+  if(c.type==='channel'&&c.owner&&postWait(c)&&Date.now()-(c.lastPost||0)<(c.lastWait||postWait(c))){
     b.innerHTML=`<div class="mutebar"><span class="cooldown" id="cdTxt"></span></div>`;$('#panel').classList.remove('open');
-    const tick=()=>{if(T.openChat!==c.id)return;const left=Math.ceil((60000-(Date.now()-(c.lastPost||0)))/1000);const el=$('#cdTxt');if(!el)return;if(left<=0){renderChatBottom();return}el.textContent=`Подождите 1 минуту · 0:${String(left).padStart(2,'0')}`;setTimeout(tick,500)};tick();return}
+    const tick=()=>{if(T.openChat!==c.id)return;const W=c.lastWait||postWait(c);const left=Math.ceil((W-(Date.now()-(c.lastPost||0)))/1000);const el=$('#cdTxt');if(!el)return;if(left<=0){renderChatBottom();return}el.textContent=`Подождите ${waitWord(W)} · ${fmtDur(left)}`;setTimeout(tick,500)};tick();return}
   b.innerHTML=`<div class="replybar" id="replyBar"></div><div class="inbar"><button class="ib" id="attBtn" aria-label="Фото">${IC.clip}</button>${(c.type==='channel'&&c.owner)||c.type==='group'?'<button class="ib" id="pollBtn" aria-label="Опрос">📊</button>':''}<div class="field"><textarea id="txt" rows="1" placeholder="${c.type==='channel'?'Опубликовать пост':'Сообщение'}"></textarea><button class="ib ${T.spoilerSend?'on':''}" id="spBtn" title="Скрытый текст">${IC.spoil}</button><button class="ib" id="emBtn">${IC.smile}</button>${c.type==='channel'?'':'<button class="ib" id="rndBtn" title="Записать кружочек" aria-label="Записать кружочек"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg></button>'}</div><button class="send dim hide" id="sendBtn" aria-label="Отправить">${IC.send}</button><button class="send mic" id="micBtn" aria-label="Удерживайте, чтобы записать голосовое">${VI.mic}</button></div>`;
   const ta=$('#txt'),sb=$('#sendBtn');
   const mb=$('#micBtn');bindMic(mb);
@@ -1347,7 +1349,31 @@ function openSchedule(){
     sh.querySelector('#sGo').onclick=()=>go(new Date(inp.value).getTime());
   });
 }
-function postGate(c){if(!c||c.type!=='channel'||!c.owner)return true;if((c.subs||0)<150)return true;const left=60000-(Date.now()-(c.lastPost||0));if(left<=0)return true;toast(`Следующий пост — через ${Math.ceil(left/1000)} сек. На каналах от 150 подписчиков можно 1 пост в минуту`);return false}
+
+/* ---- channel chat for your own channel (opens at 300 subscribers): fans chatting in slang ---- */
+const FAN_NAMES=['Тёма','Ксю','Лёха','Мила','Даня','Варя','Кирюха','Соня','Макс','Лиза','Гоша','Ника','Ярик','Полина','Стёпа','Аня','Влад','Даша','Тимур','Ева'];
+const FAN_LINES=['хахахаха','ахахаха жиза','ору 😂😂','кринж 💀','имба','рил','база','го ещё пост','лол','пон','это сигма','вайб топ','ну это мощно','ахах я в шоке','краш','жесть 🔥','топчик','реально ору','а когда новый пост?','легенда','хаха ну это слишком','это я каждый день','ммм ну такое','согл','не верю 😳','бро ты гений','сохранил','лучший канал','ахахах я плачу','кто тоже с телефона? 👋','ну всё, я фанат','это база базированная','ноу коммент 😶','хи-хи','пушка 💣','вот это поворот','скинул другу','админ топ 👑'];
+const FAN_REPLY=['ахахах {n}, жиза','{n} рил','хаха {n} ору','{n}, согл','{n} база','{n} кринж 💀','ахаха {n} ты чего','{n} лол','+','++','плюс','{n} пон'];
+function ensureFans(){FAN_NAMES.forEach((n,i)=>{const id='fan'+i;if(!S.users[id])S.users[id]={name:n,color:['#e17076','#7bc862','#65aadd','#a695e7','#ee7aae','#6ec9cb','#faa774'][i%7],bot:true,online:Math.random()<.6,lastSeen:now()}})}
+function chanChatOf(ch){return S.chats['cc_'+ch.id]}
+function openChanChat(ch){
+  if((ch.subs||0)<300){toast(`Чат канала откроется на 300 подписчиках · сейчас ${ch.subs||0}`);return}
+  ensureFans();let c=chanChatOf(ch);
+  if(!c){c=S.chats['cc_'+ch.id]={id:'cc_'+ch.id,type:'group',chanChat:ch.id,title:'Чат · '+ch.title,color:ch.color,avatar:ch.avatar,members:FAN_NAMES.map((_,i)=>'fan'+i),admin:true,messages:[{id:uid(),sys:true,text:'Чат канала создан',time:now()}],muted:false};save()}
+  closePopups();setTimeout(()=>openChat(c.id),300);
+}
+function fanTick(){
+  Object.values(S.chats).filter(c=>c.chanChat).forEach(c=>{const open=T.openChat===c.id;if(Math.random()>(open?.6:.05))return;
+    const who=c.members[Math.floor(Math.random()*c.members.length)];const last=c.messages[c.messages.length-1];
+    let text;if(last&&last.from&&last.from!==who&&!last.sys&&Math.random()<.4){const nm=last.from==='me'?(S.me.name||'админ').split(' ')[0]:(S.users[last.from]?.name||'');text=FAN_REPLY[Math.floor(Math.random()*FAN_REPLY.length)].replace('{n}',nm)}else text=FAN_LINES[Math.floor(Math.random()*FAN_LINES.length)];
+    const m={id:uid(),from:who,text,time:now(),status:'read',reactions:{}};if(last&&last.from==='me'&&Math.random()<.5)m.reply={id:last.id,from:'me',text:(last.text||'').slice(0,60)};
+    const go=()=>{c.messages.push(m);if(c.messages.length>400)c.messages=c.messages.slice(-400);if(!open)c.unread=(c.unread||0)+1;save();if(T.openChat===c.id)renderMessages();renderListIfVisible()};
+    if(open){T.typing[c.id]=who;updateTyping(c);setTimeout(()=>{delete T.typing[c.id];updateTyping(c);go()},700+Math.random()*1200)}else go()})}
+setInterval(fanTick,2600);
+
+function postWait(c){const n=c.subs||0;if(n<150)return 0;if(n<500)return 60000;if(n<1000)return 5*60000;return Math.min(60,10+5*Math.floor((n-1000)/1000))*60000}
+function waitWord(ms){const m=Math.round(ms/60000);return m+' '+plural(m,'минуту','минуты','минут')}
+function postGate(c){if(!c||c.type!=='channel'||!c.owner)return true;const w=postWait(c);if(!w)return true;const left=w-(Date.now()-(c.lastPost||0));if(left<=0)return true;toast(`Следующий пост — через ${fmtDur(left/1000)}`);return false}
 function sendMessage(o,when){
   {const cc=S.chats[T.openChat];if(cc&&cc.type==='channel'&&cc.owner&&!when&&!postGate(cc))return false}
   const c=S.chats[T.openChat];if(!c)return;
@@ -1359,7 +1385,7 @@ function sendMessage(o,when){
   if(typeof when==='number'){m.status='scheduled';m.schedAt=when}
   else if(when==='online'){m.status='waiting'}
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
-  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);{const add=20+Math.floor(Math.random()*31);let left=add;const step=()=>{const k=Math.min(left,2+Math.floor(Math.random()*6));c.subs=(c.subs||0)+k;c.subGrow=(c.subGrow||0)+k;left-=k;save();if(T.openChat===c.id)updateHeadStatus();if(left>0)setTimeout(step,250+Math.random()*300);else pubSyncMeta(c,true)};setTimeout(step,300);setTimeout(()=>toast('+'+add+' подписчиков'),500)}}
+  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();c.lastWait=postWait(c);setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);{const add=20+Math.floor(Math.random()*31);let left=add;const step=()=>{const k=Math.min(left,2+Math.floor(Math.random()*6));c.subs=(c.subs||0)+k;c.subGrow=(c.subGrow||0)+k;left-=k;save();if(T.openChat===c.id)updateHeadStatus();if(left>0)setTimeout(step,250+Math.random()*300);else pubSyncMeta(c,true)};setTimeout(step,300)}}
   if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
   if(m.status==='sent')afterSent(c);
 }
