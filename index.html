@@ -617,6 +617,11 @@ input[type=datetime-local]{color-scheme:dark}
 .rr-ring.pl{pointer-events:none}.rr-ring.pl circle{stroke:#fff;stroke-width:3}
 .vid.round .vplay.rp{display:none;z-index:2}.vid.round.paused .vplay.rp{display:flex}
 .cl-snd{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:5;border:0;border-radius:22px;padding:12px 18px;background:#fff;color:#000;font:inherit;font-size:15px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.3)}
+.swinfo{left:-34px;right:auto}.swinfo span{font-size:20px;font-weight:700;color:#fff}
+.mi-prev{display:flex;justify-content:flex-end;padding:6px 4px 10px}.mi-prev .bubble{max-width:85%}
+.r.mi{cursor:default}.mi-ic{width:26px;display:flex;justify-content:center;color:var(--tx2)}
+.mi-b{flex:1;display:flex;flex-direction:column;align-items:flex-start}.mi-t{color:var(--tx2);font-size:13px;white-space:nowrap}
+.mi-prev .bubble{background:var(--out)!important;color:#000}.mi-prev .bubble .meta{color:#5a8f4e}
 </style>
 </head>
 <body>
@@ -899,6 +904,7 @@ function renderSettings(){
      <div class="r" id="setAe"><span class="ico" style="background:#ff2d55">✨</span>Анимированные эмодзи<span class="sw ${S.animEmoji?'on':''}"></span></div>
      <div class="r" id="setArch"><span class="ico" style="background:#8e8e93">🗂</span>Архив и закрытые чаты<span class="v">потяните чаты вниз</span></div>
      ${REAL?`<div class="r" id="setOut"><span class="ico" style="background:#5856d6">🚪</span>Выйти из аккаунта</div><div class="r red" id="setDelAcc"><span class="ico" style="background:#ff3b30">🗑</span>Удалить аккаунт</div>`:''}
+     <div class="r" id="setAbout"><span class="ico" style="background:#5856d6">ℹ️</span>О мессенджере</div>
      <div class="r" id="setBl"><span class="ico" style="background:#ff3b30">🚫</span>Заблокированные<span class="v">${Object.values(S.users).filter(u=>u.blocked).length}</span></div>
    </div>
    <div class="sec-h">Мои стикеры</div>
@@ -914,6 +920,7 @@ function renderSettings(){
   $('#setPc').onclick=()=>{const setNew=()=>openPasscode({mode:'set',title:'Новый код-пароль',onOk:c=>{S.passcode=c;save();renderSettings();toast('Код-пароль сохранён')}});if(S.passcode)openPasscode({mode:'check',title:'Текущий код-пароль',onOk:()=>setTimeout(setNew,400)});else setNew()};
   $('#setAe').onclick=()=>{S.animEmoji=!S.animEmoji;save();$('#setAe .sw').classList.toggle('on',S.animEmoji);document.body.classList.toggle('noanim',!S.animEmoji)};
   $('#setArch').onclick=()=>{T.tab='chats';T.archive=true;renderMain()};
+  $('#setAbout').onclick=()=>openSheet('О мессенджере',`<div class="pf-top"><div style="font-size:54px">💬</div><p class="pf-desc">Переписка, звонки, голосовые и кружочки — между настоящими людьми.<br><br>В каналах часть подписчиков, просмотров, реакций и голосов в опросах добавляют боты-фанаты, чтобы каналы росли живее.</p></div>`);
   $('#setBl').onclick=()=>{const bl=Object.entries(S.users).filter(([,u])=>u.blocked);openSheet('Заблокированные',bl.length?bl.map(([id,u])=>`<div class="chk" data-u="${id}">${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},40)}<div>${esc(u.name)}</div><button class="link" style="margin-left:auto">Разблокировать</button></div>`).join(''):'<div class="empty">Никого нет 🙂</div>',sh=>sh.querySelectorAll('[data-u]').forEach(r=>r.querySelector('button').onclick=()=>{S.users[r.dataset.u].blocked=false;save();r.animate([{opacity:1},{opacity:0,transform:'translateX(40px)'}],{duration:250,fill:'forwards'}).onfinish=()=>r.remove();renderSettings()}))};
   $('#addStk').onclick=()=>pickImage(d=>{S.stickers.push(d);save();renderSettings();toast('Стикер добавлен')},256);
   $('#mainContent').querySelectorAll('.mystk [data-i]').forEach(el=>longPress(el,()=>{S.stickers.splice(+el.dataset.i,1);save();renderSettings();toast('Стикер удалён')}));
@@ -1104,7 +1111,7 @@ function openGroupProfile(c){
   const has=c.messages.some(m=>!m.sys);
   const sub=c.type==='group'?`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}`:NOBOTS&&(c.feed||c.news)?(c.subscribed?'вы подписаны':'канал'):`${fmtK(c.subs)} ${plural(c.subs>=1000?5:c.subs,'подписчик','подписчика','подписчиков')}`;
   const memberRow=m=>{const u=S.users[m];return `<div class="r mrow" data-u="${m}">${admin?`<button class="rmbtn" data-rm="${m}" aria-label="Удалить">−</button>`:''}${avHTML({name:u.name,color:u.color,emoji:u.emoji,img:u.avatar},36)}<div class="mi-t"><div>${esc(u.name)}</div><div class="sm" style="${u.online?'color:var(--ac)':''}">${statusText(u)}</div></div>${admin?`<button class="rmconf" data-rmc="${m}">Удалить</button>`:''}</div>`};
-  const body=`<div class="pf-top">${avHTML(chatAvatarObj(c),96)}<h2>${esc(c.title)}${vbadge(c)}</h2><div class="pf-st" id="gSub">${sub}</div>${REAL&&c.type==='channel'&&(c.feed||c.owner)?'<div class="sm" style="margin-top:4px">🤖 подписчики, просмотры и реакции — от ботов-фанатов</div>':''}${c.desc?`<p class="pf-desc">${esc(c.desc)}</p>`:''}</div>
+  const body=`<div class="pf-top">${avHTML(chatAvatarObj(c),96)}<h2>${esc(c.title)}${vbadge(c)}</h2><div class="pf-st" id="gSub">${sub}</div>${c.desc?`<p class="pf-desc">${esc(c.desc)}</p>`:''}</div>
    <div class="qa">${c.type==='group'?`<button data-a="call"><span>📞</span>Звонок</button>`:''}<button data-a="mute"><span>${c.muted?'🔔':'🔕'}</span>${c.muted?'Вкл. звук':'Без звука'}</button>${c.type==='channel'&&!c.owner&&c.subscribed?`<button data-a="leave"><span>🚪</span>Отписаться</button>`:''}</div>
    ${extraRows(c)}
    <div class="grp">
@@ -1398,7 +1405,7 @@ function openMsgMenu(id,row){
   ctx.innerHTML=`<div class="rbar">${['❤️','👍','😂','😮','😢','🔥','🎉','👏'].map((e,i)=>`<button data-e="${e}"><span style="animation-delay:${i*28}ms">${e}</span></button>`).join('')}</div>`;
   ctx.appendChild(clone);
   const menu=document.createElement('div');menu.className='ctxmenu';
-  menu.innerHTML=`${!can&&!(c.type==='channel'&&!c.owner)&&!(c.type==='private'&&S.users[c.user].blocked)?`<button data-a="reply">Ответить<span>↩️</span></button>`:''}${text?`<button data-a="copy">Скопировать<span>📋</span></button>`:''}<button data-a="share">Поделиться<span>↗️</span></button>${!m.sys&&!can?`<button data-a="star">${isStar(c,m)?'Убрать из избранного':'В избранное'}<span>⭐</span></button>`:''}${can?`<button data-a="now">Отправить сейчас<span>➤</span></button>`:''}${c.remote&&m.from!=='me'&&!m.sys?`<button data-a="report" class="red">Пожаловаться<span>⚠️</span></button>`:''}${canDel?`<button data-a="del" class="red">Удалить<span>🗑</span></button>`:''}`;
+  menu.innerHTML=`${!can&&!(c.type==='channel'&&!c.owner)&&!(c.type==='private'&&S.users[c.user].blocked)?`<button data-a="reply">Ответить<span>↩️</span></button>`:''}${text?`<button data-a="copy">Скопировать<span>📋</span></button>`:''}<button data-a="share">Поделиться<span>↗️</span></button>${m.from==='me'&&c.type==='private'&&!m.sys?'<button data-a="info">Информация<span>ⓘ</span></button>':''}${!m.sys&&!can?`<button data-a="star">${isStar(c,m)?'Убрать из избранного':'В избранное'}<span>⭐</span></button>`:''}${can?`<button data-a="now">Отправить сейчас<span>➤</span></button>`:''}${c.remote&&m.from!=='me'&&!m.sys?`<button data-a="report" class="red">Пожаловаться<span>⚠️</span></button>`:''}${canDel?`<button data-a="del" class="red">Удалить<span>🗑</span></button>`:''}`;
   ctx.appendChild(menu);
   $('#app').appendChild(ctx);
   const h=ctx.offsetHeight;let top=r.top-ar.top-56;top=Math.max(50,Math.min(top,ar.height-h-20));ctx.style.top=top+'px';
@@ -1406,6 +1413,7 @@ function openMsgMenu(id,row){
   menu.onclick=e=>{const a=e.target.closest('button')?.dataset.a;if(!a)return;
     if(a==='copy'){const done=()=>toast('Скопировано');try{navigator.clipboard.writeText(text).then(done,()=>{fallbackCopy(text);done()})}catch(_){fallbackCopy(text);done()}closePopups()}
     if(a==='share'){closePopups();setTimeout(()=>openShare(m),180)}
+    if(a==='info'){closePopups();setTimeout(()=>openMsgInfo(m),200)}
     if(a==='star'){closePopups();setTimeout(()=>toggleStar(c,m),160)}
     if(a==='now'){m.status='sent';m.time=now();delete m.schedAt;T.animated.delete(m.id);save();closePopups();renderMessages();afterSent(c)}
     if(a==='del')askDelete(m);
@@ -2102,14 +2110,25 @@ const THEMES=[
  {k:'lime',n:'Лайм',bg:'linear-gradient(160deg,#d4fc79 0%,#96e6a1 100%)'},
  {k:'fire',n:'Огонь',bg:'linear-gradient(160deg,#f83600 0%,#f9d423 100%)'},
  {k:'lav',n:'Лаванда',bg:'linear-gradient(160deg,#e0c3fc 0%,#8ec5fc 100%)'}];
-function applyTheme(cid){const t=THEMES.find(x=>x.k===(S.theme&&S.theme[cid]))||THEMES[0];const el=document.querySelector('#chat .chat-bg');if(el)el.style.background=t.bg}
+function themeKey(cid){return (S.theme&&S.theme[cid])||(S.themeAll&&S.themeAll[cid])||'def'}
+function applyTheme(cid){const t=THEMES.find(x=>x.k===themeKey(cid))||THEMES[0];const el=document.querySelector('#chat .chat-bg');if(el)el.style.background=t.bg}
+function canThemeAll(c){return (c.remote)||(c.type==='channel'&&c.owner)}
+function setThemeAll(c,k){S.themeAll=S.themeAll||{};delete S.theme[c.id];if(k==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=k;save();
+  if(c.remote){try{const F=FBX();F.setDoc(F.doc(F.collection(F.db,'chats',c.rid,'messages')),{from:RT.uid,time:Date.now(),text:'',themeSet:k}).catch(e=>toast(fbErr(e)))}catch(_){}}
+  else if(c.type==='channel'&&c.owner){c.theme=k;pubSyncMeta(c,true)}}
 function openThemePicker(c){
-  const cur=(S.theme[c.id])||'def';
-  openSheet('Тема чата',`<div class="thgrid">${THEMES.map(t=>`<button class="thc ${t.k===cur?'on':''}" data-t="${t.k}"><span style="background:${t.bg}"><i class="b1"></i><i class="b2"></i></span>${t.n}</button>`).join('')}</div>`,sh=>{
-    sh.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{if(b.dataset.t==='def')delete S.theme[c.id];else S.theme[c.id]=b.dataset.t;save();sh.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x===b));if(T.openChat===c.id)applyTheme(c.id);toast('Тема: '+THEMES.find(x=>x.k===b.dataset.t).n)});
+  let mode=canThemeAll(c)?'all':'me';
+  const body=()=>{const cur=mode==='me'?(S.theme[c.id]||'def'):((S.themeAll&&S.themeAll[c.id])||'def');
+    return `${canThemeAll(c)?`<div class="mtabs"><button data-mode="all" class="${mode==='all'?'on':''}">Для всех</button><button data-mode="me" class="${mode==='me'?'on':''}">Только у меня</button></div><p class="hint" style="padding-top:0">${mode==='all'?(c.type==='channel'?'Тему увидят все подписчики канала':'Тему увидите вы и собеседник'):'Тему видите только вы, у других останется своя'}</p>`:''}
+    <div class="thgrid">${THEMES.map(t=>`<button class="thc ${t.k===cur?'on':''}" data-t="${t.k}"><span style="background:${t.bg}"><i class="b1"></i><i class="b2"></i></span>${t.n}</button>`).join('')}</div>`};
+  openSheet('Тема чата',`<div id="thWrap">${body()}</div>`,sh=>{
+    sh.onclick=e=>{const md=e.target.closest('[data-mode]');if(md){mode=md.dataset.mode;sh.querySelector('#thWrap').innerHTML=body();return}
+      const b=e.target.closest('[data-t]');if(!b)return;const k=b.dataset.t;
+      if(mode==='all')setThemeAll(c,k);else{if(k==='def')delete S.theme[c.id];else S.theme[c.id]=k;save()}
+      sh.querySelectorAll('.thc').forEach(x=>x.classList.toggle('on',x===b));if(T.openChat===c.id)applyTheme(c.id);
+      toast((mode==='all'?'Тема для всех: ':'Тема у вас: ')+THEMES.find(x=>x.k===k).n)};
   });
 }
-
 /* ---------- ringtones ---------- */
 const RINGS=[
  {k:'note',n:'Нота',p:()=>{tone([880],.18,.08,0,'sine');tone([1320],.25,.06,.16,'sine')}},
@@ -2311,7 +2330,7 @@ function extraRows(c){ // the WhatsApp-style rows shared by every chat profile
     <div class="r" data-x="stars"><span class="ico" style="background:#ffcc00">⭐</span>Избранное<span class="v">${ns||'Нет'}</span></div></div>
    <div class="grp">
     <div class="r" data-x="ring"><span class="ico" style="background:#ff9500">🔔</span>Уведомления<span class="v">${c.muted?'Выкл.':ringOf(c.id).n}</span></div>
-    <div class="r" data-x="theme"><span class="ico" style="background:linear-gradient(135deg,#ff9ec7,#7fb2ff)">🎨</span>Тема чата<span class="v">${(THEMES.find(x=>x.k===S.theme[c.id])||THEMES[0]).n}</span></div>
+    <div class="r" data-x="theme"><span class="ico" style="background:linear-gradient(135deg,#ff9ec7,#7fb2ff)">🎨</span>Тема чата<span class="v">${(THEMES.find(x=>x.k===themeKey(c.id))||THEMES[0]).n}</span></div>
     ${c.type==='channel'&&(c.owner||!REAL)?((!REAL||(c.subs||0)>=500)?`<div class="r" data-x="music"><span class="ico" style="background:#ff2d55">🎵</span>Музыка канала<span class="v">${S.music[c.id]?'Есть':'Нет'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#ff2d55">🎵</span><div class="st-b"><div>Музыка канала</div><div class="sm">откроется на 500 подписчиках · сейчас ${c.subs||0}</div></div></div>`):''}
     ${c.type!=='channel'?`<div class="r" data-x="ttl"><span class="ico" style="background:#30b0c7">⏱</span>Исчезающие сообщения<span class="v">${ttlLabel(c.id)}</span></div>`:''}
     <div class="r" data-x="lock"><span class="ico" style="background:#34c759">${c.locked?'🔓':'🔒'}</span>${c.locked?'Открыть чат (снять пароль)':'Закрыть чат'}</div></div>`;
@@ -2451,7 +2470,7 @@ const PUB={unsub:{},ownUnsub:{},lastSync:{}};
 function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
 function smallAv(src){return src&&src.length<120000?src:null}
 function postPayload(m){const d={text:m.text||'',time:m.time||Date.now()};if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
-function chDoc(c){return {owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
+function chDoc(c){return {theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
 async function publishChannel(c){
   if(!pubReady()){toast('Войдите в аккаунт, чтобы сделать канал публичным');return false}
   const F=FBX();
@@ -2480,7 +2499,8 @@ function pubLocalId(id){return 'pc_'+id}
 function ensurePubChat(id,d){
   const L=pubLocalId(id);let c=S.chats[L];
   if(!c)c=S.chats[L]={id:L,type:'channel',pubRid:id,title:d.title,desc:d.desc,avatar:d.avatar,color:d.color,subs:(d.bots||0)+(d.real||0),subscribed:false,owner:false,muted:false,messages:[]};
-  else{c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;c.subs=Math.max(c.subscribed?1:0,(d.bots||0)+(d.real||0))}
+  S.themeAll=S.themeAll||{};if(d.theme&&d.theme!=='def')S.themeAll[L]=d.theme;else delete S.themeAll[L];if(T.openChat===L)applyTheme(L);
+  if(c){c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;c.subs=Math.max(c.subscribed?1:0,(d.bots||0)+(d.real||0))}
   return c;
 }
 function mapPost(c,doc,prev){
@@ -2913,6 +2933,7 @@ function mapMsg(c,doc){
   const d=doc.data();const prev=c.messages.find(x=>x.id===doc.id);
   const m={id:doc.id,from:d.from===RT.uid?'me':d.from,text:d.text||'',time:d.time||Date.now(),status:'sent',reactions:{}};
   if(d.sys)m.sys=true;if(d.spoiler)m.spoiler=true;if(d.img)m.img=d.img;if(d.sticker)m.sticker=d.sticker;if(d.fwd)m.fwd=d.fwd;if(d.reply)m.reply=d.reply;if(d.video)m.video=d.video;if(d.exp)m.exp=d.exp;if(d.call)m.call=d.call;
+  if(d.themeSet!==undefined){m.sys=true;const who=d.from===RT.uid?'Вы изменили':((S.users[d.from]?.name||'Собеседник').split(' ')[0]+' изменил(а)');m.text=`${who} тему чата: «${(THEMES.find(x=>x.k===d.themeSet)||THEMES[0]).n}»`;m.themeSet=d.themeSet}
   if(d.voice)m.voice={...d.voice,heard:prev&&prev.voice&&prev.voice.heard||d.from===RT.uid};
   Object.entries(d.reactions||{}).forEach(([e,arr])=>{if(Array.isArray(arr)&&arr.length)m.reactions[e]={n:arr.length,mine:arr.includes(RT.uid)}});
   if(d.poll){const votes=d.poll.votes||{};m.poll={q:d.poll.q,opts:(d.poll.opts||[]).map((t,i)=>({t,v:Object.values(votes).filter(v=>v===i).length})),voted:votes[RT.uid]!==undefined?votes[RT.uid]:-1}}
@@ -2920,6 +2941,11 @@ function mapMsg(c,doc){
 }
 function recomputeStatus(c){
   const others=Object.entries(c.reads||{}).filter(([u])=>u!==RT.uid).map(([,t])=>t);const maxRead=others.length?Math.max(...others):0;
+  S.readAt=S.readAt||{};S.dlvAt=S.dlvAt||{};const peer=c.type==='private'?S.users[c.user]:null;
+  c.messages.forEach(m=>{if(m.from!=='me'||m.sys||!m.time)return;
+    if(m.time<=maxRead&&!S.readAt[m.id])S.readAt[m.id]=Math.max(m.time,maxRead);
+    if(!S.dlvAt[m.id]&&(S.readAt[m.id]||(peer&&peer.online)||(peer&&peer.lastSeen>m.time)))S.dlvAt[m.id]=Math.max(m.time,Math.min(S.readAt[m.id]||Date.now(),peer&&peer.lastSeen>m.time?peer.lastSeen:Date.now()));});
+  const ks=Object.keys(S.readAt);if(ks.length>3000)ks.slice(0,1000).forEach(k=>{delete S.readAt[k];delete S.dlvAt[k]});
   c.messages.forEach(m=>{if(m.from==='me'&&!m.sys&&m.status!=='scheduled'&&m.status!=='waiting')m.status=m.time<=maxRead?'read':'sent'});
   const mine=(c.reads||{})[RT.uid]||0;
   c.unread=T.openChat===c.id?0:c.messages.filter(m=>m.from!=='me'&&!m.sys&&m.time>mine).length;
@@ -2933,6 +2959,7 @@ function watchMessages(c,attempt){
     const list=docs.map(d=>mapMsg(c,d)).filter(m=>!hidden.has(m.id)&&!(m.from!=='me'&&RT.blocked.includes(m.from)));
     if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys))playRing(c.id);first=false;
     list.sort((a,b)=>a.time-b.time);
+    {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
     c.messages=list.concat(c.pending||[]);
     recomputeStatus(c);save();
     if(T.openChat===c.id){renderMessages();markRemoteRead(c)}
@@ -3089,7 +3116,7 @@ function openIconPicker(){
 /* ================= POLLS ================= */
 function pollHTML(m){
   const P=m.poll;const tot=P.opts.reduce((a,o)=>a+o.v,0);const voted=P.voted>=0;
-  return `<div class="poll ${voted?'done':''}" data-poll="${m.id}"><div class="pq">${esc(P.q)}</div><div class="pk">${String(m.from||'').startsWith('f_')&&!NOBOTS?'Голосуют боты-фанаты 🤖 и вы':'Анонимный опрос'}</div>${P.opts.map((o,i)=>{const pc=tot?Math.round(o.v/tot*100):0;return `<button class="popt ${P.voted===i?'mine':''}" data-o="${i}"><span class="pbar" style="width:${voted?pc:0}%"></span><span class="pc">${voted?pc+'%':''}</span><span class="pr"></span><span class="pt">${esc(o.t)}</span>${P.voted===i?'<span class="pck">✓</span>':''}</button>`}).join('')}<div class="ptot">${tot?fmtK(tot)+' '+plural(tot,'голос','голоса','голосов'):'Пока никто не голосовал'}</div></div>`;
+  return `<div class="poll ${voted?'done':''}" data-poll="${m.id}"><div class="pq">${esc(P.q)}</div><div class="pk">Анонимный опрос</div>${P.opts.map((o,i)=>{const pc=tot?Math.round(o.v/tot*100):0;return `<button class="popt ${P.voted===i?'mine':''}" data-o="${i}"><span class="pbar" style="width:${voted?pc:0}%"></span><span class="pc">${voted?pc+'%':''}</span><span class="pr"></span><span class="pt">${esc(o.t)}</span>${P.voted===i?'<span class="pck">✓</span>':''}</button>`}).join('')}<div class="ptot">${tot?fmtK(tot)+' '+plural(tot,'голос','голоса','голосов'):'Пока никто не голосовал'}</div></div>`;
 }
 function votePoll(id,i){
   const m=findMsg(id);if(!m||!m.poll||m.poll.voted>=0)return;
@@ -3487,6 +3514,18 @@ function pullEnd(){
   ct.addEventListener('wheel',e=>{if(!pullEligible())return;if(e.deltaY<0||PULL.wheel>0){e.preventDefault();PULL.wheel=Math.max(0,PULL.wheel-e.deltaY*1.3);pullSet(PULL.wheel);clearTimeout(PULL.wt);PULL.wt=setTimeout(()=>{PULL.wheel=0;pullEnd()},280)}},{passive:false});
 })();
 
+
+function openMsgInfo(m){
+  const c=S.chats[T.openChat];if(!c)return;S.readAt=S.readAt||{};S.dlvAt=S.dlvAt||{};
+  const fmt=t=>t?`${dayLabel(t)==='Сегодня'?'сегодня':dayLabel(t).toLowerCase()} в ${hhmm(t)}`:'—';
+  const read=S.readAt[m.id]||(m.status==='read'?(m.readAt||null):null),dlv=S.dlvAt[m.id]||(read?read:null)||(!c.remote&&m.status!=='scheduled'?m.time:null);
+  const row=document.querySelector(`#msgs .row[data-id="${m.id}"] .bubble`);
+  openSheet('Информация',`<div class="mi-prev">${row?row.outerHTML:''}</div>
+   <div class="grp">
+    <div class="r mi"><span class="mi-ic">${IC.check}</span><div class="mi-b"><div>Отправлено</div><div class="mi-t">${fmt(m.time)}</div></div></div>
+    <div class="r mi"><span class="mi-ic">${IC.check2}</span><div class="mi-b"><div>Доставлено</div><div class="mi-t">${dlv?fmt(dlv):'ещё не доставлено'}</div></div></div>
+    <div class="r mi"><span class="mi-ic" style="color:var(--ac)">${IC.check2}</span><div class="mi-b"><div>Прочитано</div><div class="mi-t">${read?fmt(read):'ещё не прочитано'}</div></div></div></div>`);
+}
 /* ---------- message gestures (delegated): hold → menu, swipe left → reply, double tap → ❤️ ---------- */
 (function(){
   const box=$('#msgs');let t,fired=false,sx=0,sy=0,held=null,sw=null,swDone=false,lastTap={id:null,t:0};
@@ -3500,14 +3539,17 @@ function pullEnd(){
     if(held&&(Math.abs(dx)>8||Math.abs(dy)>8))unhold();
     if(!sw)return;
     if(!sw.on){
+      const ch=S.chats[T.openChat];const infoOk=sw.row.classList.contains('out')&&ch&&ch.type==='private';
       if(dx<-10&&Math.abs(dx)>Math.abs(dy)*1.3){sw.on=true;try{box.setPointerCapture(sw.pid)}catch(_){}
         const a=document.createElement('div');a.className='swarrow';a.innerHTML=IC.reply;sw.row.appendChild(a);sw.arrow=a}
+      else if(infoOk&&dx>10&&Math.abs(dx)>Math.abs(dy)*1.3){sw.on=true;sw.info=true;try{box.setPointerCapture(sw.pid)}catch(_){}
+        const a=document.createElement('div');a.className='swarrow swinfo';a.innerHTML='<span>ⓘ</span>';sw.row.appendChild(a);sw.arrow=a}
       else if(Math.abs(dy)>10||dx>10){sw=null}
       return;
     }
-    const d=Math.min(0,dx);const eff=d>-64?d:-64+(d+64)*.3;
+    const d=sw.info?Math.max(0,dx):Math.min(0,dx);const eff=sw.info?(d<64?d:64+(d-64)*.3):(d>-64?d:-64+(d+64)*.3);
     sw.row.style.transform=`translateX(${eff}px)`;
-    const p=Math.min(1,-eff/56);sw.arrow.style.opacity=p;sw.arrow.style.transform=`translateY(-50%) scale(${.4+p*.6}) rotate(${(1-p)*-90}deg)`;
+    const p=Math.min(1,Math.abs(eff)/56);sw.arrow.style.opacity=p;sw.arrow.style.transform=`translateY(-50%) scale(${.4+p*.6}) rotate(${(1-p)*-90}deg)`;
     if(p>=1&&!sw.armed){sw.armed=true;sw.arrow.classList.add('armed');try{navigator.vibrate&&navigator.vibrate(8)}catch(_){}sw.arrow.animate([{scale:'1'},{scale:'1.35'},{scale:'1'}],{duration:260,easing:'cubic-bezier(.34,1.6,.64,1)'})}
     else if(p<1&&sw.armed){sw.armed=false;sw.arrow.classList.remove('armed')}
   });
@@ -3515,7 +3557,7 @@ function pullEnd(){
     const cur=s.row.style.transform;s.row.style.transform='';
     s.row.animate([{transform:cur},{transform:'translateX(6px)',offset:.7},{transform:'none'}],{duration:420,easing:'cubic-bezier(.34,1.3,.64,1)'});
     s.arrow.animate([{opacity:s.arrow.style.opacity||1},{opacity:0}],{duration:200,fill:'forwards'}).onfinish=()=>s.arrow.remove();
-    if(s.armed){const m=findMsg(s.id);if(m)setReply(m)}};
+    if(s.armed){const m=findMsg(s.id);if(m){if(s.info)openMsgInfo(m);else setReply(m)}}};
   box.addEventListener('pointerup',end);box.addEventListener('pointercancel',end);box.addEventListener('pointerleave',()=>{if(!sw||!sw.on)unhold()});
   box.addEventListener('contextmenu',e=>{const b=e.target.closest('.bubble');if(!b||b.closest('.typing'))return;e.preventDefault();unhold();sw=null;if(!fired){const row=b.closest('.row');openMsgMenu(row.dataset.id,row)}fired=false});
   box.addEventListener('click',e=>{
