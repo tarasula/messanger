@@ -2132,8 +2132,13 @@ function applyNews(initial){
   Object.values(S.chats).filter(c=>c.news).forEach(c=>{c.messages.sort((a,b)=>a.time-b.time);if(c.messages.length>200)c.messages.splice(0,c.messages.length-200)});
   if(any){save();if(T.openChat&&S.chats[T.openChat]?.news)renderMessages();renderListIfVisible()}
 }
+let NEWS_LOADED=false;
+function loadNewsJson(){fetch('news.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(j=>{if(!j||!Array.isArray(j.items))return;ensureNewsChannels();NEWS_DOCS=j.items.filter(x=>x&&x.id).map(x=>({id:x.id,data:x}));applyNews(!NEWS_LOADED);NEWS_LOADED=true;renderListIfVisible()}).catch(()=>{})}
 (function(){
-  try{if(!window.claude||!window.claude.use)return}catch(_){return}
+  let inClaude=false;try{inClaude=!!(window.claude&&window.claude.use)}catch(_){}
+  if(!inClaude){ // on the published site the news come from news.json, refreshed by the daily task
+    if(/^https?:$/.test(location.protocol)){loadNewsJson();setInterval(loadNewsJson,10*60000);setInterval(()=>applyNews(false),60000)}
+    return}
   window.claude.use('db').then(db=>{
     if(!db)return;
     ensureNewsChannels();renderListIfVisible();
