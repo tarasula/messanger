@@ -1581,7 +1581,7 @@ function renderMessages(jump){
     let tk='';
     if(isOut&&!isPost){
       if(m.status==='scheduled')tk=`<span class="tk">${IC.clock}</span>`;
-      else if(m.status==='waiting')tk='<span class="tk">⏳</span>';
+      else if(m.status==='waiting'||m.status==='retry')tk='<span class="tk">⏳</span>';
       else tk=`<span class="tk">${m.status==='read'?IC.check2:IC.check}</span>`;
     }
     const timeTxt=m.status==='scheduled'?(dayLabel(m.schedAt)==='Сегодня'?'':dayLabel(m.schedAt)+' ')+hhmm(m.schedAt):hhmm(m.time);
@@ -1699,7 +1699,7 @@ function openMsgMenu(id,row){
 }
 function askDelete(m){
   const c=S.chats[T.openChat];
-  if(m.status==='scheduled'||m.status==='waiting'||c.type==='channel'){actionSheet('Удалить сообщение?',[{label:'Удалить',red:true,fn:()=>deleteMessage(m.id,true)}]);return}
+  if(m.status==='scheduled'||m.status==='waiting'||m.status==='retry'||c.type==='channel'){actionSheet('Удалить сообщение?',[{label:'Удалить',red:true,fn:()=>deleteMessage(m.id,true)}]);return}
   const acts=[{label:'Удалить у меня',red:true,fn:()=>deleteMessage(m.id,false)}];
   if(c.type==='private'||m.from==='me'||c.admin)acts.push({label:'Удалить у всех',red:true,fn:()=>deleteMessage(m.id,true)});
   actionSheet('Удалить сообщение?',acts);
@@ -2886,12 +2886,13 @@ function legacyChEntry(c){const posts=c.messages.filter(m=>!m.sys).slice(-25).ma
   while(JSON.stringify(e).length>420000&&e.posts.length>1)e.posts=e.posts.slice(1);return e}
 async function legacyWriteChannels(){if(!RT.uid)return false;const F=FBX();const mine=Object.values(S.chats).filter(c=>c.owner&&c.type==='channel'&&c.public);
   const pubch={};let kw=[];mine.forEach(c=>{pubch[c.id]=legacyChEntry(c);kw=kw.concat(pubch[c.id].kw)});
+  const sig=JSON.stringify(pubch,(k,v)=>k==='updatedAt'?undefined:v);if(sig===PUB.legSig)return true;PUB.legSig=sig;
   try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{pubch,chkw:[...new Set(kw)].slice(0,400)});return true}catch(e){toast('Канал не сохранился: '+fbErr(e));return false}}
 let LEG_T=0;function legacySoon(){clearTimeout(LEG_T);LEG_T=setTimeout(legacyWriteChannels,1500)}
 async function legacySearch(q){const F=FBX();const lo=q.toLowerCase();const norm=t=>(t||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,'');const nq=norm(q);const out=new Map();
   const take=d=>{const u=d.data();if(!u.pubch||d.id===RT.uid)return;Object.entries(u.pubch).forEach(([id,e])=>{if((e.kw||[]).includes(lo)||norm(e.title).includes(nq))out.set(id,{id,legacyOwner:d.id,...e})})};
   try{(await F.getDocs(F.query(F.collection(F.db,'users'),F.where('chkw','array-contains',lo),F.limit(10)))).docs.forEach(take)}catch(_){}
-  try{(await F.getDocs(F.query(F.collection(F.db,'users'),F.limit(300)))).docs.forEach(take)}catch(_){}
+  try{const now2=Date.now();if(!PUB.uscan||now2-PUB.uscan.t>10*60000)PUB.uscan={t:now2,d:(await F.getDocs(F.query(F.collection(F.db,'users'),F.limit(300)))).docs};PUB.uscan.d.forEach(take)}catch(_){}
   return [...out.values()]}
 
 function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
@@ -2915,7 +2916,7 @@ async function unpublishChannel(c){
 }
 function pubPost(c,m){try{if(c&&c.owner)pushForChannelPost(c,m)}catch(_){}if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
 function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;if(legacy()){legacySoon();return}const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
-function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<8000)return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
+function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<5*60000)return;PUB.lastSync[c.id]=t;if(legacy()){legacySoon();return}
   {const F2=FBX();c.messages.filter(m=>!m.sys).slice(-10).forEach(m=>F2.setDoc(F2.doc(F2.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{}))}
   const F=FBX();const d=chDoc(c);delete d.created;F.updateDoc(F.doc(F.db,'pubchannels',c.id),d).catch(()=>{})}
 function watchOwnPub(c){if(legacy())return; // real people who subscribed are added to the owner's count too
@@ -2970,7 +2971,7 @@ async function searchPublic(q){
     return [...got.values()]};
   let [ch,gr,lg]=await Promise.all([run('pubchannels'),run('pubgroups'),legacySearch(q)]);{const ids=new Set(ch.map(x=>x.id));lg.forEach(x=>{if(!ids.has(x.id))ch.push(x)})}
   const norm=t=>(t||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,'');const nq=norm(q);
-  if(nq){const scan=async col=>{try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.limit(300)));return s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>norm(x.title).includes(nq))}catch(_){return []}};
+  if(nq){const scan=async col=>{try{PUB.cscan=PUB.cscan||{};const cc=PUB.cscan[col];const s=cc&&Date.now()-cc.t<10*60000?cc.s:(PUB.cscan[col]={t:Date.now(),s:await F.getDocs(F.query(F.collection(F.db,col),F.limit(300)))}).s;return s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>norm(x.title).includes(nq))}catch(_){return []}};
     const [c2,g2]=await Promise.all([scan('pubchannels'),scan('pubgroups')]);const add=(arr,more)=>{const ids=new Set(arr.map(x=>x.id));more.forEach(x=>{if(!ids.has(x.id))arr.push(x)})};add(ch,c2);add(gr,g2)}
   return {ch:ch.filter(x=>!(S.chats[x.id]&&S.chats[x.id].owner)||true).filter(x=>!S.chats[x.id]),gr};
 }
@@ -4414,7 +4415,7 @@ function recomputeStatus(c){
   c.unread=T.openChat===c.id?0:c.messages.filter(m=>m.from!=='me'&&!m.sys&&m.time>mine).length;
 }
 function watchMessages(c,attempt){
-  attempt=attempt||0;const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(400));let first=true;
+  attempt=attempt||0;const F=FBX();const q=F.query(F.collection(F.db,'chats',c.rid,'messages'),F.orderBy('time','desc'),F.limit(150));let first=true;
   RT.msgUnsubs[c.rid]=F.onSnapshot(q,snap=>{
     const hidden=new Set((S.hidden&&S.hidden[c.id])||[]);
     const docs=[];const sigs=[];snap.docs.forEach(d=>{const x=d.data();if(x.sig){sigs.push([d,x]);return}if(x.part){(RT_PARTS[x.part.fid]=RT_PARTS[x.part.fid]||{})[x.part.i]=x.data;return}if(x.exp&&x.exp<=Date.now()){if(x.from===RT.uid)FBX().deleteDoc(d.ref).catch(()=>{});return}docs.push(d)});
@@ -4473,7 +4474,13 @@ async function remoteWrite(c,d){
     F.updateDoc(F.doc(F.db,'chats',c.rid),{lastMsg:{text:pv,from:RT.uid,time:d.time},updatedAt:d.time,[`typing.${RT.uid}`]:0}).catch(()=>{});
     try{pushForMessage(c,d,pv)}catch(_){}
     return true;
-  }catch(e){toast(e&&e.code==='permission-denied'&&c.type==='private'?'Сообщение не доставлено: вас заблокировали':fbErr(e));return false}
+  }catch(e){const code=e&&e.code||'';
+    if(/resource-exhausted|unavailable|deadline-exceeded|internal|aborted/.test(code)&&!d.sig&&!d.part&&d.themeSet===undefined){
+      const m={id:'p'+uid(),from:'me',text:d.text,time:d.time||now(),status:'retry',tries:0,lastTry:Date.now(),reactions:{},payload:d};if(d.img)m.img=d.img;if(d.voice)m.voice=d.voice;if(d.spoiler)m.spoiler=true;
+      c.pending=c.pending||[];c.pending.push(m);c.messages.push(m);save();if(T.openChat===c.id)renderMessages();
+      if(Date.now()-(RT.quotaToast||0)>10*60000){RT.quotaToast=Date.now();toast(code==='resource-exhausted'?'Сервер исчерпал дневной лимит. Сообщение отправится само, как только лимит обновится':'Нет связи с сервером. Сообщение отправится само')}
+      return false}
+    toast(e&&e.code==='permission-denied'&&c.type==='private'?'Сообщение не доставлено: вас заблокировали':fbErr(e));return false}
 }
 function remoteSend(c,o,when){
   const d=msgPayload({...o,reply:T.reply||undefined});if(T.reply)clearReply();
@@ -4486,7 +4493,8 @@ function remoteSend(c,o,when){
   remoteWrite(c,d);
 }
 setInterval(()=>{Object.values(S.chats).forEach(c=>{if(!c.remote||!c.pending||!c.pending.length)return;
-  c.pending.slice().forEach(p=>{const due=p.status==='scheduled'?p.schedAt<=now():(c.type==='private'&&S.users[c.user]?.online);
+  c.pending.slice().forEach(p=>{if(p.status==='retry'){if(Date.now()-(p.lastTry||0)>Math.min(10*60000,60000*Math.pow(1.5,p.tries||0))){const tr=(p.tries||0)+1;c.pending=c.pending.filter(x=>x!==p);c.messages=c.messages.filter(x=>x!==p);save();remoteWrite(c,{...p.payload}).then(ok=>{if(!ok){const q=c.pending.find(x=>x.status==='retry'&&x.payload===p.payload)||c.pending[c.pending.length-1];if(q&&q.status==='retry')q.tries=tr}})}return}
+    const due=p.status==='scheduled'?p.schedAt<=now():(c.type==='private'&&S.users[c.user]?.online);
     if(due){c.pending=c.pending.filter(x=>x!==p);c.messages=c.messages.filter(x=>x!==p);save();remoteWrite(c,{...p.payload,time:Date.now()})}})})},4000);
 function remoteReact(c,id,e){
   const F=FBX();const m=c.messages.find(x=>x.id===id);if(!m)return;const ref=F.doc(F.db,'chats',c.rid,'messages',id);
