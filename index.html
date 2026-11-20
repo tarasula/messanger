@@ -757,6 +757,7 @@ body.noanim .astk,body.noanim .astk *{animation:none!important}
 .tround{display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid currentColor;position:relative;vertical-align:-1px}.tround::after{content:'';position:absolute;inset:2px;border-radius:50%;background:#ff3b30;animation:pulse 1s infinite}
 .teyes{display:inline-flex;gap:3px;margin-left:6px;vertical-align:-1px}.teyes i{position:relative;width:9px;height:10px;border-radius:50%;border:1.6px solid currentColor;background:transparent}.teyes i::after{content:'';position:absolute;top:3px;left:2px;width:3.5px;height:3.5px;border-radius:50%;background:currentColor;animation:teye 1.6s ease-in-out infinite}
 @keyframes teye{0%,100%{transform:translate(-1px,0)}30%{transform:translate(2.5px,-1px)}60%{transform:translate(1px,1.5px)}}
+.cooldown{display:block;width:100%;text-align:center;color:#8e8e93;font-size:16px;padding:12px 0;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -1298,6 +1299,9 @@ function renderChatBottom(){
     else{b.innerHTML=`<div class="mutebar${c.feed&&!NOCHAT?' two':''}">${c.feed&&!NOCHAT?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
     $('#panel').classList.remove('open');return;
   }
+  if(c.type==='channel'&&c.owner&&(c.subs||0)>=150&&Date.now()-(c.lastPost||0)<60000){
+    b.innerHTML=`<div class="mutebar"><span class="cooldown" id="cdTxt"></span></div>`;$('#panel').classList.remove('open');
+    const tick=()=>{if(T.openChat!==c.id)return;const left=Math.ceil((60000-(Date.now()-(c.lastPost||0)))/1000);const el=$('#cdTxt');if(!el)return;if(left<=0){renderChatBottom();return}el.textContent=`Подождите 1 минуту · 0:${String(left).padStart(2,'0')}`;setTimeout(tick,500)};tick();return}
   b.innerHTML=`<div class="replybar" id="replyBar"></div><div class="inbar"><button class="ib" id="attBtn" aria-label="Фото">${IC.clip}</button>${(c.type==='channel'&&c.owner)||c.type==='group'?'<button class="ib" id="pollBtn" aria-label="Опрос">📊</button>':''}<div class="field"><textarea id="txt" rows="1" placeholder="${c.type==='channel'?'Опубликовать пост':'Сообщение'}"></textarea><button class="ib ${T.spoilerSend?'on':''}" id="spBtn" title="Скрытый текст">${IC.spoil}</button><button class="ib" id="emBtn">${IC.smile}</button>${c.type==='channel'?'':'<button class="ib" id="rndBtn" title="Записать кружочек" aria-label="Записать кружочек"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg></button>'}</div><button class="send dim hide" id="sendBtn" aria-label="Отправить">${IC.send}</button><button class="send mic" id="micBtn" aria-label="Удерживайте, чтобы записать голосовое">${VI.mic}</button></div>`;
   const ta=$('#txt'),sb=$('#sendBtn');
   const mb=$('#micBtn');bindMic(mb);
@@ -1355,7 +1359,7 @@ function sendMessage(o,when){
   if(typeof when==='number'){m.status='scheduled';m.schedAt=when}
   else if(when==='online'){m.status='waiting'}
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
-  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();const was=c.subs||0;c.subs=was+20;c.subGrow=(c.subGrow||0)+20;save();setTimeout(()=>{updateHeadStatus();toast('+20 подписчиков')},400)}
+  if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);const was=c.subs||0;c.subs=was+20;c.subGrow=(c.subGrow||0)+20;save();setTimeout(()=>{updateHeadStatus();toast('+20 подписчиков')},400)}
   if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
   if(m.status==='sent')afterSent(c);
 }
