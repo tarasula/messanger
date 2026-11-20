@@ -823,6 +823,10 @@ function renderChatList(quiet){
     if(msgHits.length)html+='<div class="sec-h">Сообщения</div>'+msgHits.slice(0,20).map(([c,m])=>`<div class="item" data-c="${c.id}">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="l1"><span class="nm">${esc(chatTitle(c))}</span><span class="tm">${listTime(m.time)}</span></div><div class="pv">${esc(m.text)}</div></div></div>`).join('');
     if(REAL&&RT.uid&&q.replace('@','').length>=3){if(RT.searchQ!==q){RT.searchQ=q;RT.searchHit=null;clearTimeout(RT.st);RT.st=setTimeout(async()=>{const u=await findByUsername(q);if(RT.searchQ===q&&u){RT.searchHit=u;renderChatList()}},450)}
       if(RT.searchHit){const u=RT.searchHit;html='<div class="sec-h">Найден по @нику</div><div class="item" data-ru="'+u.id+'">'+avHTML({name:u.name,color:colorFor(u.id),img:u.avatar},46)+'<div class="body"><div class="nm">'+esc(u.name)+'</div><div class="pv">@'+esc(u.username)+' · написать</div></div></div>'+html}}
+    if(REAL&&RT.uid&&q.length>=2){if(RT.pubQ!==q){RT.pubQ=q;RT.pubHits=null;clearTimeout(RT.pt);RT.pt=setTimeout(async()=>{const r=await searchPublic(q);if(RT.pubQ===q){RT.pubHits=r;renderChatList()}},400)}
+      const H=RT.pubHits;if(H){const chs=H.ch.filter(d=>!S.chats[pubLocalId(d.id)]?.subscribed);const grs=H.gr.filter(g=>!(S.chats['r_'+g.id]&&S.chats['r_'+g.id].members));
+        if(chs.length)html+='<div class="sec-h">Публичные каналы</div>'+chs.map((d,i)=>{const n=(d.bots||0)+(d.real||0);return `<div class="item" data-pub="${esc(d.id)}" style="animation-delay:${i*25}ms">${avHTML({name:d.title,color:d.color,img:d.avatar},46)}<div class="body"><div class="nm">📢 ${esc(d.title)}${n>=10000?VERIFY_SVG:''}</div><div class="pv">${fmtK(n)} ${plural(n>=1000?5:n,'подписчик','подписчика','подписчиков')}</div></div></div>`}).join('');
+        if(grs.length)html+='<div class="sec-h">Публичные группы</div>'+grs.map((g,i)=>`<div class="item" data-pg="${esc(g.id)}" style="animation-delay:${i*25}ms">${avHTML({name:g.title,color:g.color,img:g.avatar},46)}<div class="body"><div class="nm">👥 ${esc(g.title)}</div><div class="pv">${g.count||1} ${plural(g.count||1,'участник','участника','участников')} · вступить</div></div></div>`).join('')}}
     if(!html)html='<div class="empty">'+(REAL?'Ничего не найдено. Чтобы найти человека, введите его @ник':'Ничего не найдено')+'</div>';
     ct.innerHTML=`<div class="tabpane">${html}</div>`;
   }else{
@@ -1104,6 +1108,7 @@ function openGroupProfile(c){
    <div class="qa">${c.type==='group'?`<button data-a="call"><span>📞</span>Звонок</button>`:''}<button data-a="mute"><span>${c.muted?'🔔':'🔕'}</span>${c.muted?'Вкл. звук':'Без звука'}</button>${c.type==='channel'&&!c.owner&&c.subscribed?`<button data-a="leave"><span>🚪</span>Отписаться</button>`:''}</div>
    ${extraRows(c)}
    <div class="grp">
+     ${REAL&&((c.type==='channel'&&c.owner)||(c.type==='group'&&c.remote&&c.admin))?`<div class="r" data-a="privacy"><span class="ico" style="background:${c.public?'#34c759':'#8e8e93'}">${c.public?'🌍':'🔒'}</span>${c.type==='group'?'Тип группы':'Тип канала'}<span class="v">${c.public?'Публичный':'Приватный'}</span></div>`:''}
      ${c.type==='channel'&&c.owner?`<div class="r" data-a="edit"><span class="ico" style="background:#34c759">✏️</span>Изменить канал</div>`:''}
      <div class="r ${has?'':'dis'}" data-a="export"><span class="ico" style="background:#5856d6">📤</span>Экспорт чата</div>
      <div class="r red ${admin&&has?'':'dis'}" data-a="clear"><span class="ico" style="background:#ff3b30">🧹</span><div>Очистить чат${admin?'':'<div class="sm">Только администратор</div>'}</div></div>
@@ -1125,8 +1130,9 @@ function openGroupProfile(c){
       if(a==='call'){closePopups();setTimeout(()=>startCall(c.id,false,false,e.target.closest('button')),300)}
       if(a==='mute'){c.muted=!c.muted;save();closePopups();renderChatHead();renderChatBottom();toast(c.muted?'Звук выключен':'Звук включён')}
       if(a==='lock'){closePopups();setTimeout(()=>lockFlow(c),300)}
+      if(a==='privacy'){closePopups();setTimeout(()=>openPrivacy(c),340)}
       if(a==='edit')editChannel(c);
-      if(a==='leave'){closePopups();setTimeout(()=>{c.subscribed=false;if(NOBOTS)c.subs=0;else c.subs=Math.max(0,c.subs-1);save();musicOnClose();closeChat();renderMain();toast('Вы отписались от канала')},300)}
+      if(a==='leave'){closePopups();setTimeout(()=>{if(c.pubRid){pubSubscribed(c,false);unwatchPub(c)}c.subscribed=false;if(NOBOTS)c.subs=0;else c.subs=Math.max(0,c.subs-1);save();musicOnClose();closeChat();renderMain();toast('Вы отписались от канала')},300)}
       if(a==='addm')openAddMembers(c);
       if(a==='export'){if(!has){toast('Чат пуст');return}openExport(c)}
       if(a==='clear'){if(!admin){toast('Очистить чат может только администратор');return}if(!has){toast('Чат уже пуст');return}askClear(c)}
@@ -1136,7 +1142,7 @@ function openGroupProfile(c){
 function editChannel(c){
   openSheet('Канал',`<div class="avpick" id="cAv">${c.avatar?`<img src="${c.avatar}">`:IC.camera}</div><input class="fld" id="cName" value="${esc(c.title)}"><textarea class="fld" id="cDesc" placeholder="Описание">${esc(c.desc||'')}</textarea><button class="btn" id="cSave">Сохранить</button>`,sh=>{
     let av=c.avatar;sh.querySelector('#cAv').onclick=()=>pickImage(d=>{av=d;sh.querySelector('#cAv').innerHTML=`<img src="${d}">`});
-    sh.querySelector('#cSave').onclick=()=>{c.title=sh.querySelector('#cName').value.trim()||c.title;c.desc=sh.querySelector('#cDesc').value.trim();c.avatar=av;save();closePopups();renderChatHead()};
+    sh.querySelector('#cSave').onclick=()=>{c.title=sh.querySelector('#cName').value.trim()||c.title;c.desc=sh.querySelector('#cDesc').value.trim();c.avatar=av;save();pubSyncMeta(c,true);closePopups();renderChatHead()};
   });
 }
 function renderChatBottom(){
@@ -1203,6 +1209,7 @@ function sendMessage(o,when){
   if(typeof when==='number'){m.status='scheduled';m.schedAt=when}
   else if(when==='online'){m.status='waiting'}
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
+  if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
   if(m.status==='sent')afterSent(c);
 }
 function afterSent(c){
@@ -1416,7 +1423,7 @@ function askDelete(m){
 function deleteMessage(id,all){
   const c=S.chats[T.openChat];if(!c)return;
   const box=$('#msgs');const row=box.querySelector(`.row[data-id="${id}"]`);
-  const finish=()=>{if(c.remote){remoteDelete(c,id,all);return}c.messages=c.messages.filter(x=>x.id!==id);save();renderMessages();renderListIfVisible()};
+  const finish=()=>{if(c.remote){remoteDelete(c,id,all);return}if(c.type==='channel'&&c.owner&&c.public)pubDelPost(c,id);c.messages=c.messages.filter(x=>x.id!==id);save();renderMessages();renderListIfVisible()};
   toast(all?'Удалено у всех':'Удалено у вас');
   if(!row){finish();return}
   row._dying=true;
@@ -1614,6 +1621,7 @@ function openShare(m){
   });
 }
 function subscribe(c){
+  if(c.pubRid){pubSubscribed(c,true);watchPub(c)}
   c.subscribed=true;c.subs++;save();renderChatBottom();renderChatHead();
   const ban=document.createElement('div');ban.className='subbanner';ban.textContent='Вы подписались на канал';$('#chat').appendChild(ban);setTimeout(()=>{ban.style.transition='opacity .3s';ban.style.opacity=0;setTimeout(()=>ban.remove(),300)},2200);
   const sims=Object.values(S.chats).filter(x=>x.type==='channel'&&x.id!==c.id&&!x.owner);
@@ -1658,6 +1666,8 @@ function vbadge(c){return c&&c.type==='channel'&&(c.subs||0)>=10000?VERIFY_SVG:'
 function suggestChannels(){if(T.folder!=='all'&&T.folder!=='channel')return '';const cs=Object.values(S.chats).filter(c=>(c.feed||c.news)&&!c.subscribed);if(!cs.length)return '';return `<div class="sec-h">Каналы</div>`+cs.map((c,i)=>`<div class="item" data-c="${c.id}" style="animation-delay:${i*25}ms">${avHTML(chatAvatarObj(c),46)}<div class="body"><div class="nm">📢 ${esc(c.title)}</div><div class="pv">${esc((c.desc||'').slice(0,60))}</div></div></div>`).join('')}
 function sortChats(a,b){return (!!b.pinned-!!a.pinned)||(!!b.fav-!!a.fav)||((lastMsg(b)?.time||0)-(lastMsg(a)?.time||0))}
 function bindListItems(ct){
+  ct.querySelectorAll('[data-pub]').forEach(el=>el.onclick=()=>{const d=(RT.pubHits&&RT.pubHits.ch||[]).find(x=>x.id===el.dataset.pub);if(d)openPublicChannel(d)});
+  ct.querySelectorAll('[data-pg]').forEach(el=>el.onclick=()=>{const g=(RT.pubHits&&RT.pubHits.gr||[]).find(x=>x.id===el.dataset.pg);if(g)joinPublicGroup(g)});
   ct.querySelectorAll('[data-c]').forEach(el=>longPress(el,()=>chatListMenu(el.dataset.c,el),()=>{if(PULL.justDragged)return;openChat(el.dataset.c)}));
   ct.querySelectorAll('[data-u]').forEach(el=>el.onclick=()=>S.users[el.dataset.u]?.remote?openRemoteChatWith(el.dataset.u):openChat(ensurePrivate(el.dataset.u)));
   ct.querySelectorAll('[data-ru]').forEach(el=>el.onclick=()=>openRemoteChatWith(el.dataset.ru));
@@ -1696,7 +1706,7 @@ function askDeleteChat(c){
     if(c.admin)acts.push({label:'Удалить группу для всех',red:true,fn:()=>go(()=>delete S.chats[c.id],'Группа удалена')});
     actionSheet(`«${c.title}»`,acts);return}
   if(c.owner)actionSheet('Удалить канал?',[{label:'Удалить канал',red:true,fn:()=>go(()=>delete S.chats[c.id],'Канал удалён')}]);
-  else actionSheet('Покинуть канал?',[{label:'Покинуть канал',red:true,fn:()=>go(()=>{c.subscribed=false;c.locked=false;c.subs--},'Вы покинули канал')}]);
+  else actionSheet('Покинуть канал?',[{label:'Покинуть канал',red:true,fn:()=>go(()=>{if(c.pubRid){pubSubscribed(c,false);unwatchPub(c)}c.subscribed=false;c.locked=false;c.subs--},'Вы покинули канал')}]);
 }
 function toggleBlock(id){
   const u=S.users[id];if(!u)return;
@@ -2302,7 +2312,7 @@ function extraRows(c){ // the WhatsApp-style rows shared by every chat profile
    <div class="grp">
     <div class="r" data-x="ring"><span class="ico" style="background:#ff9500">🔔</span>Уведомления<span class="v">${c.muted?'Выкл.':ringOf(c.id).n}</span></div>
     <div class="r" data-x="theme"><span class="ico" style="background:linear-gradient(135deg,#ff9ec7,#7fb2ff)">🎨</span>Тема чата<span class="v">${(THEMES.find(x=>x.k===S.theme[c.id])||THEMES[0]).n}</span></div>
-    ${c.type==='channel'&&(c.owner||!REAL)?`<div class="r" data-x="music"><span class="ico" style="background:#ff2d55">🎵</span>Музыка канала<span class="v">${S.music[c.id]?'Есть':'Нет'}</span></div>`:''}
+    ${c.type==='channel'&&(c.owner||!REAL)?((!REAL||(c.subs||0)>=500)?`<div class="r" data-x="music"><span class="ico" style="background:#ff2d55">🎵</span>Музыка канала<span class="v">${S.music[c.id]?'Есть':'Нет'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#ff2d55">🎵</span><div class="st-b"><div>Музыка канала</div><div class="sm">откроется на 500 подписчиках · сейчас ${c.subs||0}</div></div></div>`):''}
     ${c.type!=='channel'?`<div class="r" data-x="ttl"><span class="ico" style="background:#30b0c7">⏱</span>Исчезающие сообщения<span class="v">${ttlLabel(c.id)}</span></div>`:''}
     <div class="r" data-x="lock"><span class="ico" style="background:#34c759">${c.locked?'🔓':'🔒'}</span>${c.locked?'Открыть чат (снять пароль)':'Закрыть чат'}</div></div>`;
 }
@@ -2436,6 +2446,103 @@ async function openRoundRecorder(){
 }
 function roundHTML(m){const v=m.video;return `<div class="vid round" data-vf="${v.fid}">${v.poster?`<img src="${v.poster}" alt="">`:'<div class="vph"></div>'}<span class="vplay">▶</span><span class="vdur">${fmtDur(v.dur||0)}</span></div>`}
 
+/* ===== public channels and groups: anyone in the world can find them by name ===== */
+const PUB={unsub:{},ownUnsub:{},lastSync:{}};
+function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
+function smallAv(src){return src&&src.length<120000?src:null}
+function postPayload(m){const d={text:m.text||'',time:m.time||Date.now()};if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
+function chDoc(c){return {owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,created:c.created||now(),updatedAt:Date.now()}}
+async function publishChannel(c){
+  if(!pubReady()){toast('Войдите в аккаунт, чтобы сделать канал публичным');return false}
+  const F=FBX();
+  try{
+    await F.setDoc(F.doc(F.db,'pubchannels',c.id),{...chDoc(c),real:0});
+    for(const m of c.messages.filter(m=>!m.sys).slice(-60))await F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m));
+    c.public=true;save();watchOwnPub(c);return true;
+  }catch(e){toast(e&&e.code==='permission-denied'?'Сервер не пускает: обновите правила базы (я прислал новые)':fbErr(e));return false}
+}
+async function unpublishChannel(c){
+  const F=FBX();c.public=false;save();
+  try{PUB.ownUnsub[c.id]&&PUB.ownUnsub[c.id]();delete PUB.ownUnsub[c.id];
+    const ps=await F.getDocs(F.collection(F.db,'pubchannels',c.id,'posts'));for(const d of ps.docs)await F.deleteDoc(d.ref);
+    await F.deleteDoc(F.doc(F.db,'pubchannels',c.id))}catch(_){}
+}
+function pubPost(c,m){if(!c||!c.public||!c.owner||!pubReady())return;const F=FBX();F.setDoc(F.doc(F.db,'pubchannels',c.id,'posts',m.id),postPayload(m)).catch(()=>{})}
+function pubDelPost(c,id){if(!c||!c.public||!c.owner||!pubReady())return;const F=FBX();F.deleteDoc(F.doc(F.db,'pubchannels',c.id,'posts',id)).catch(()=>{})}
+function pubSyncMeta(c,force){if(!c||!c.public||!c.owner||!pubReady())return;const t=Date.now();if(!force&&t-(PUB.lastSync[c.id]||0)<20000)return;PUB.lastSync[c.id]=t;
+  const F=FBX();const d=chDoc(c);delete d.created;F.updateDoc(F.doc(F.db,'pubchannels',c.id),d).catch(()=>{})}
+function watchOwnPub(c){ // real people who subscribed are added to the owner's count too
+  if(PUB.ownUnsub[c.id]||!pubReady())return;const F=FBX();
+  PUB.ownUnsub[c.id]=F.onSnapshot(F.doc(F.db,'pubchannels',c.id),d=>{if(!d.exists())return;const r=d.data().real||0;const prev=c.realSubs||0;if(r!==prev){c.subs=Math.max(1,(c.subs||1)+(r-prev));c.realSubs=r;save();if(T.openChat===c.id)updateHeadStatus()}},()=>{});
+}
+/* viewers */
+function pubLocalId(id){return 'pc_'+id}
+function ensurePubChat(id,d){
+  const L=pubLocalId(id);let c=S.chats[L];
+  if(!c)c=S.chats[L]={id:L,type:'channel',pubRid:id,title:d.title,desc:d.desc,avatar:d.avatar,color:d.color,subs:(d.bots||0)+(d.real||0),subscribed:false,owner:false,muted:false,messages:[]};
+  else{c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;c.subs=Math.max(c.subscribed?1:0,(d.bots||0)+(d.real||0))}
+  return c;
+}
+function mapPost(c,doc,prev){
+  const d=doc.data();const m={id:doc.id,from:c.id,text:d.text||'',time:d.time||Date.now(),status:'sent',reactions:prev?prev.reactions:{},views:prev?prev.views:0};
+  if(d.spoiler)m.spoiler=true;if(d.img)m.img=d.img;if(d.title)m.title=d.title;if(d.sticker)m.sticker=d.sticker;if(d.voice)m.voice={...d.voice,heard:prev&&prev.voice&&prev.voice.heard};
+  if(d.poll)m.poll=prev&&prev.poll&&prev.poll.q===d.poll.q?prev.poll:{q:d.poll.q,opts:d.poll.opts.map(t=>({t,v:0})),voted:-1};
+  if(!prev){ // first look: as many people have seen and reacted as the channel is big
+    const subs=c.subs||1,age=Math.min(1,(Date.now()-m.time)/(6*HOUR)+.15);
+    m.views=Math.max(1,Math.round(subs*(.25+Math.random()*.45)*age));
+    if(subs>3){const E=['❤️','👍','🔥','😂','😮','🎉'];const tot=Math.round(m.views*(.04+Math.random()*.1));if(tot>0){let left=tot;E.slice(0,2+Math.floor(Math.random()*3)).forEach((e,i,a)=>{const n=i===a.length-1?left:Math.round(left*(.4+Math.random()*.3));if(n>0){m.reactions[e]={n,mine:false};left-=n}})}}
+    if(m.poll&&subs>3){const tot=Math.round(m.views*(.2+Math.random()*.3));m.poll.opts.forEach(o=>o.v=0);for(let i=0;i<tot;i++)m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v++}
+  }
+  return m;
+}
+function watchPub(c){
+  if(!c.pubRid||PUB.unsub[c.id]||!pubReady())return;const F=FBX();
+  const u1=F.onSnapshot(F.doc(F.db,'pubchannels',c.pubRid),d=>{if(!d.exists()){c.gone=true;if(T.openChat===c.id)renderChatHead();return}ensurePubChat(c.pubRid,d.data());save();if(T.openChat===c.id){renderChatHead();updateHeadStatus()}renderListIfVisible()},()=>{});
+  const u2=F.onSnapshot(F.query(F.collection(F.db,'pubchannels',c.pubRid,'posts'),F.orderBy('time','desc'),F.limit(100)),snap=>{
+    const old=new Map(c.messages.map(m=>[m.id,m]));c.messages=snap.docs.map(d=>mapPost(c,d,old.get(d.id))).sort((a,b)=>a.time-b.time);
+    save();if(T.openChat===c.id)renderMessages();renderListIfVisible()},()=>{});
+  PUB.unsub[c.id]=()=>{u1();u2()};
+}
+function unwatchPub(c){PUB.unsub[c.id]&&PUB.unsub[c.id]();delete PUB.unsub[c.id]}
+function pubSubscribed(c,on){if(!c.pubRid||!pubReady())return;const F=FBX();F.updateDoc(F.doc(F.db,'pubchannels',c.pubRid),{real:F.increment(on?1:-1)}).catch(()=>{})}
+async function searchPublic(q){
+  if(!pubReady()||q.length<2)return {ch:[],gr:[]};const F=FBX();const lo=q.toLowerCase();
+  const run=async col=>{try{const s=await F.getDocs(F.query(F.collection(F.db,col),F.orderBy('titleLower'),F.startAt(lo),F.endAt(lo+''),F.limit(8)));return s.docs.map(d=>({id:d.id,...d.data()}))}catch(_){return []}};
+  const [ch,gr]=await Promise.all([run('pubchannels'),run('pubgroups')]);
+  return {ch:ch.filter(x=>x.owner!==RT.uid),gr};
+}
+function openPublicChannel(d){const c=ensurePubChat(d.id,d);save();watchPub(c);openChat(c.id)}
+/* public groups */
+async function setGroupPublic(c,on){
+  const F=FBX();
+  try{
+    await F.updateDoc(F.doc(F.db,'chats',c.rid),{public:on,titleLower:(c.title||'').toLowerCase()});
+    if(on)await F.setDoc(F.doc(F.db,'pubgroups',c.rid),{title:c.title,titleLower:(c.title||'').toLowerCase(),avatar:smallAv(c.avatar),color:c.color||'#65aadd',count:(c.members||[]).length+1,updatedAt:Date.now()});
+    else await F.deleteDoc(F.doc(F.db,'pubgroups',c.rid)).catch(()=>{});
+    c.public=on;save();return true;
+  }catch(e){toast(e&&e.code==='permission-denied'?'Сервер не пускает: обновите правила базы (я прислал новые)':fbErr(e));return false}
+}
+function joinPublicGroup(g){
+  const ex=S.chats['r_'+g.id];if(ex&&ex.members){openChat(ex.id);return}
+  openSheet('Группа',`<div class="pf-top">${avHTML({name:g.title,color:g.color,img:g.avatar},96)}<h2>${esc(g.title)}</h2><div class="pf-st">публичная группа · ${g.count||1} ${plural(g.count||1,'участник','участника','участников')}</div></div><button class="btn" id="gJoin">Вступить в группу</button>`,sh=>{
+    sh.querySelector('#gJoin').onclick=async()=>{const F=FBX();try{await F.updateDoc(F.doc(F.db,'chats',g.id),{members:F.arrayUnion(RT.uid)});F.updateDoc(F.doc(F.db,'pubgroups',g.id),{count:(g.count||1)+1}).catch(()=>{});closePopups();toast('Вы вступили в группу');
+      const t0=Date.now();const wait=setInterval(()=>{const c=S.chats['r_'+g.id];if(c||Date.now()-t0>8000){clearInterval(wait);if(c)openChat(c.id)}},300)}catch(e){toast(e&&e.code==='permission-denied'?'Эта группа больше не публичная':fbErr(e))}};
+  });
+}
+function openPrivacy(c){
+  const isG=c.type==='group';const on=!!c.public;
+  openSheet(isG?'Тип группы':'Тип канала',`<div class="grp">
+    <div class="r pv-o" data-p="0"><span class="ico" style="background:#8e8e93">🔒</span><div class="st-b"><div>Приватный</div><div class="sm">${isG?'Найти группу нельзя, попасть можно только по приглашению':'Канал видите только вы'}</div></div><span class="v chk">${on?'':'✓'}</span></div>
+    <div class="r pv-o" data-p="1"><span class="ico" style="background:#34c759">🌍</span><div class="st-b"><div>Публичный</div><div class="sm">${isG?'Любой человек найдёт группу в поиске и сможет вступить':'Любой человек найдёт канал в поиске и сможет подписаться'}</div></div><span class="v chk">${on?'✓':''}</span></div></div>`,sh=>{
+    sh.querySelectorAll('[data-p]').forEach(r=>r.onclick=async()=>{const want=r.dataset.p==='1';if(want===!!c.public){closePopups();return}
+      r.style.opacity=.5;let ok;
+      if(isG)ok=await setGroupPublic(c,want);else if(want)ok=await publishChannel(c);else{await unpublishChannel(c);ok=true}
+      closePopups();if(ok)toast(want?(isG?'🌍 Группа публичная — её найдут по названию':'🌍 Канал публичный — его найдут по названию'):'🔒 Теперь '+(isG?'группа':'канал')+' приватный');if(T.openChat===c.id)renderChatHead()});
+  });
+}
+function restorePub(){if(!pubReady())return;Object.values(S.chats).forEach(c=>{if(c.pubRid&&c.subscribed)watchPub(c);if(c.owner&&c.public)watchOwnPub(c)})}
+
+setInterval(restorePub,5000);
 function ensureFeeds(){
   let ch=false;
   if(S.chats.c1&&!S.chats.c1.owner){delete S.chats.c1;ch=true}
@@ -2475,10 +2582,10 @@ function feedTick(initial){
 function minViews(m){const r=Object.values(m.reactions||{}).reduce((x,v)=>x+(v.n||0),0);const p=m.poll?m.poll.opts.reduce((x,o)=>x+(o.v||0),0):0;return Math.max(r,p)+1}
 function botTick(){
   if(NOBOTS)return;
-  {const fl=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*Math.max(9,c.subs/2500));save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
+  {const fl=Object.values(S.chats).filter(c=>(c.feed||(c.pubRid&&c.subscribed))&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*Math.max(9,c.subs/2500));save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
   const t=now();const E=['❤️','🔥','😂','😮','👍','🤯','🎉','😍'];let touched=null;
   for(let rep=0;rep<3;rep++){
-  const feeds=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);
+  const feeds=Object.values(S.chats).filter(c=>(c.feed||(c.pubRid&&c.subscribed))&&c.messages.length);
   if(feeds.length){const c=feeds[Math.floor(Math.random()*feeds.length)];const recent=c.messages.slice(-6);const m=recent[Math.floor(Math.random()*recent.length)];
     if(m&&!m.sys){const e=Object.keys(m.reactions||{}).length&&Math.random()<.92?Object.keys(m.reactions)[Math.floor(Math.random()*Object.keys(m.reactions).length)]:E[Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=1+Math.floor(Math.random()*Math.max(4,c.subs/4000));m.views=(m.views||0)+3+Math.floor(Math.random()*Math.max(20,c.subs/500));touched=c}}}
   Object.values(S.chats).filter(c=>!c.remote&&(!REAL||c.type==='channel')).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<(c.type==='channel'?Math.min(.9,.2+c.subs/400):.2)){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v+=c.type==='channel'?Math.min(cap-tot,1+Math.floor(Math.random()*Math.max(1,c.subs/120))):1;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
@@ -2495,6 +2602,7 @@ function botTick(){
       if(tot<Math.max(2,Math.floor(c.subs*.15))){const e=['❤️','👍','🔥','😍','🎉','😂'][Math.floor(Math.random()*6)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=Math.min(Math.max(2,Math.floor(c.subs*.15))-tot,1+Math.floor(Math.random()*Math.max(1,c.subs/300)));m.views=Math.max(m.views||1,Math.min(c.subs,(m.views||1)+1+Math.floor(Math.random()*3)));touched=touched||c}}
   });
   Object.values(S.chats).filter(c=>c.type==='channel'&&!c.remote).forEach(c=>c.messages.slice(-30).forEach(m=>{if(m.sys)return;const f=minViews(m);if((m.views||0)<f){m.views=f+Math.floor(Math.random()*4);touched=touched||c}}));
+  Object.values(S.chats).forEach(c=>{if(c.owner&&c.public)pubSyncMeta(c)});
   if(touched){save();if(T.openChat===touched.id)renderMessages()}
 }
 

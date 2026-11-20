@@ -32,7 +32,12 @@ service cloud.firestore {
         || (resource.data.type == 'group' && uid() in resource.data.admins)
         || (resource.data.type == 'group'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
-            && request.resource.data.members.toSet() == resource.data.members.toSet().difference([uid()].toSet())));
+            && request.resource.data.members.toSet() == resource.data.members.toSet().difference([uid()].toSet())))
+        // Anyone may join a public group: only adds themselves to the members.
+        || (signedIn() && resource.data.type == 'group' && resource.data.get('public', false) == true
+            && !(uid() in resource.data.members)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+            && request.resource.data.members.toSet() == resource.data.members.toSet().union([uid()].toSet()));
       allow delete: if signedIn() && resource.data.type == 'group' && uid() in resource.data.admins;
 
       match /messages/{msgId} {
@@ -50,6 +55,30 @@ service cloud.firestore {
           && (!('poll' in resource.data) || (request.resource.data.poll.q == resource.data.poll.q && request.resource.data.poll.opts == resource.data.poll.opts));
         allow delete: if isMember() && (resource.data.from == uid() || chat().type == 'private' || uid() in chat().get('admins', []));
       }
+    }
+
+    // Public channels: everyone signed in can find and read them; only the owner writes.
+    // Others may only add or remove themselves as a subscriber (the "real" counter, by one).
+    match /pubchannels/{chId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.owner == uid();
+      allow update: if signedIn() && (resource.data.owner == uid() && request.resource.data.owner == uid()
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['real'])
+            && request.resource.data.real is int
+            && (request.resource.data.real - resource.data.get('real', 0) == 1 || request.resource.data.real - resource.data.get('real', 0) == -1)));
+      allow delete: if signedIn() && resource.data.owner == uid();
+      match /posts/{postId} {
+        function owner() { return get(/databases/$(database)/documents/pubchannels/$(chId)).data.owner; }
+        allow read: if signedIn();
+        allow create, update, delete: if signedIn() && owner() == uid();
+      }
+    }
+
+    // Public groups: a search card per group, written by its admins.
+    match /pubgroups/{gId} {
+      function grp() { return get(/databases/$(database)/documents/chats/$(gId)).data; }
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && uid() in grp().admins;
     }
 
     // Reports: anyone signed in can file one; nobody can read them from the app.
