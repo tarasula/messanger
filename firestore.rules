@@ -85,6 +85,11 @@ service cloud.firestore {
     match /statuses/{userId} {
       allow read: if signedIn() && (uid() == userId || uid() in resource.data.get('aud', []));
       allow create, update, delete: if signedIn() && uid() == userId;
+      // Pieces of status videos and circles: same people as the status itself.
+      match /media/{partId} {
+        allow read: if signedIn() && (uid() == userId || uid() in get(/databases/$(database)/documents/statuses/$(userId)).data.get('aud', []));
+        allow create, update, delete: if signedIn() && uid() == userId;
+      }
     }
 
     // Reports: anyone signed in can file one; nobody can read them from the app.
