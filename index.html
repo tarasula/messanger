@@ -840,6 +840,9 @@ body.rtl .lic.gx{margin-right:0;margin-left:.3em}
 .iab.on{transform:none}.iab-av{flex:0 0 38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
 .iab-t{display:flex;flex-direction:column;min-width:0;font-size:14px}.iab-t span{opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.rtl .iab{text-align:right}
+.cl-mic{position:absolute;left:14px;right:14px;top:30%;z-index:20;background:rgba(20,20,24,.94);color:#fff;border-radius:18px;padding:16px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.cl-mic b{font-size:17px}.cl-mic p{font-size:14px;opacity:.85;margin:8px 0 12px;line-height:1.35}.cl-mic div{display:flex;flex-direction:column;gap:8px}
+.cl-mic button{border:0;border-radius:12px;padding:11px;font:inherit;font-weight:600;color:#fff;background:#2ea6ff}.cl-mic .r2{background:rgba(255,255,255,.14)}
 </style>
 </head>
 <body>
@@ -2741,7 +2744,7 @@ async function startRealCall(c,video,fromEl){aSess('auto');
     await sigSend(c,{t:'offer',id,sdp:pc.localDescription.sdp,video:CALL.video});
     CALL.st='ringing';setCallStatus('Звонок…');ringback();try{pushForCall(c,id,CALL.video)}catch(_){}
     CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===id&&CALL.st==='ringing')endCall('missed')},55000));
-  }catch(e){toast(/NotAllowed|Permission/.test(e&&e.name||'')?'Разрешите доступ к микрофону, чтобы звонить':'Не удалось начать звонок');endCall('cancelled')}
+  }catch(e){const m=micErr(e);if(/getUserMedia|NotAllowed|NotFound|NotReadable|Permission|Abort|Security/.test((e&&e.name||'')+(e&&e.message||''))){endCall('cancelled');setTimeout(()=>openSheet(m.t,`<div class="pf-top"><p class="pf-desc">${esc(m.h)}</p></div>`),1600)}else{toast('Не удалось начать звонок');endCall('cancelled')}}
 }
 function incomingRealCall(c,sig,from){
   if(CALL&&(CALL.st==='ended'||CALL.callId===sig.id)){if(CALL.callId===sig.id)return;forceClearCall()}
@@ -2752,12 +2755,25 @@ function incomingRealCall(c,sig,from){
   buildCallUI();ringtone();setCallStatus(sig.video?'Входящий видеозвонок…':'Входящий звонок…');
   CALL.timers.push(setTimeout(()=>{if(CALL&&CALL.callId===sig.id&&CALL.st==='incoming')endCall('missed')},Math.max(5000,55000-(Date.now()-(sig._t||Date.now())))));
 }
-async function acceptRealCall(){aSess('auto');
-  const K=CALL;if(!K||!K.real)return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
+function micErr(e){const n=e&&e.name||'';const mac=/Macintosh/.test(navigator.userAgent)&&!isIOS(),saf=/Safari/.test(navigator.userAgent)&&!/Chrome|CriOS|Edg/.test(navigator.userAgent);
+  if(/NotFound|Overconstrained/.test(n))return {t:'Микрофон не найден',h:'К устройству не подключён микрофон. Подключите наушники с микрофоном или звоните с телефона.'};
+  if(/NotReadable|Abort|TrackStart/.test(n))return {t:'Микрофон занят',h:'Микрофон сейчас использует другая программа (FaceTime, Zoom, Telegram, запись экрана). Закройте её и попробуйте снова.'};
+  if(/NotAllowed|Permission|Security/.test(n)){let h;
+    if(isIOS())h='Настройки iPhone → Safari → Микрофон → «Разрешить». Если мессенджер открыт с экрана «Домой» — удалите значок и добавьте заново после этого.';
+    else if(saf)h='В Safari: меню Safari → «Настройки для этого веб-сайта…» → Микрофон → «Разрешить». Ещё проверьте: Системные настройки Mac → Конфиденциальность и безопасность → Микрофон → включите Safari.';
+    else h='Нажмите на значок слева от адреса сайта → Микрофон → «Разрешить», и обновите страницу.'+(mac?' На Mac ещё: Системные настройки → Конфиденциальность и безопасность → Микрофон → включите ваш браузер.':'');
+    return {t:'Браузер запретил микрофон',h}}
+  return {t:'Микрофон не включился',h:'Попробуйте ещё раз или откройте мессенджер в Safari / Chrome.'}}
+function micHelp(e,onRetry,onListen){const m=micErr(e);const ui=$('#callUI');ui?.querySelector('.cl-mic')?.remove();
+  const box=document.createElement('div');box.className='cl-mic';box.innerHTML=`<b>${esc(m.t)}</b><p>${esc(m.h)}</p><div><button class="r1">Попробовать снова</button>${onListen?'<button class="r2">Ответить без микрофона</button>':''}</div>`;
+  (ui||document.body).appendChild(box);box.querySelector('.r1').onclick=()=>{box.remove();onRetry()};box.querySelector('.r2')?.addEventListener('click',()=>{box.remove();onListen()})}
+async function acceptRealCall(noMic){aSess('auto');
+  const K=CALL;if(!K||!K.real||K.st==='ended')return;const c=S.chats[K.cid];primeRemote();stopTones();setCallStatus('Соединение…');K.st='connecting';paintCtrls();
   try{
-    const st=await getMedia(K.video);if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
+    let st;if(noMic)st=new MediaStream();else{try{st=await getMedia(K.video)}catch(e){if(CALL!==K)return;K.st='incoming';paintCtrls();setCallStatus('Нет доступа к микрофону');micHelp(e,()=>acceptRealCall(),()=>acceptRealCall(true));return}}
+    if(CALL!==K){st.getTracks().forEach(t=>t.stop());return}
     K.local=st;K.stream=st;showSelf(st);
-    const pc=newPeer();K.pc=pc;st.getTracks().forEach(t=>pc.addTrack(t,st));
+    const pc=newPeer();K.pc=pc;st.getTracks().forEach(t=>pc.addTrack(t,st));if(noMic){pc.addTransceiver('audio',{direction:'recvonly'});if(K.video)pc.addTransceiver('video',{direction:'recvonly'});toast('Вы слышите собеседника, но он вас — нет')}
     await pc.setRemoteDescription({type:'offer',sdp:K.offer});
     await pc.setLocalDescription(await pc.createAnswer());await waitIce(pc);
     if(CALL!==K)return;
