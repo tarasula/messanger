@@ -1352,7 +1352,7 @@ function openGroupProfile(c){
    ${extraRows(c)}
    <div class="grp">
      ${REAL&&((c.type==='channel'&&c.owner)||(c.type==='group'&&c.remote&&c.admin))?`<div class="r" data-a="privacy"><span class="ico" style="background:${c.public?'#34c759':'#8e8e93'}">${c.public?'🌍':'🔒'}</span>${c.type==='group'?'Тип группы':'Тип канала'}<span class="v">${c.public?'Публичный':'Приватный'}</span></div>`:''}
-     ${c.type==='channel'&&c.owner?((c.subs||0)>=300?`<div class="r" data-a="cchat"><span class="ico" style="background:#34c759">💬</span>Чат канала<span class="v">${chanChatOf(c)?'Открыть':'Создать'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#34c759">💬</span><div class="st-b"><div>Чат канала</div><div class="sm">откроется на 300 подписчиках · сейчас ${c.subs||0}</div></div></div>`):''}
+     ${c.type==='channel'&&c.owner?((c.subs||0)>=CHAT_MIN?`<div class="r" data-a="cchat"><span class="ico" style="background:#34c759">💬</span>Чат канала<span class="v">${chanChatOf(c)?'Открыть':'Создать'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#34c759">💬</span><div class="st-b"><div>Чат канала</div><div class="sm">откроется на ${fmtK(CHAT_MIN)} подписчиках · сейчас ${fmtK(c.subs||0)}</div></div></div>`):''}
      ${c.type==='channel'&&c.owner?`<div class="r" data-a="edit"><span class="ico" style="background:#34c759">✏️</span>Изменить канал</div>`:''}
      <div class="r ${has?'':'dis'}" data-a="export"><span class="ico" style="background:#5856d6">📤</span>Экспорт чата</div>
      <div class="r red ${admin&&has?'':'dis'}" data-a="clear"><span class="ico" style="background:#ff3b30">🧹</span><div>Очистить чат${admin?'':'<div class="sm">Только администратор</div>'}</div></div>
@@ -1455,11 +1455,12 @@ const FAN_REPLY=['ахахах {n}, жиза','{n} рил','хаха {n} ору'
 function ensureFans(){FAN_NAMES.forEach((n,i)=>{const id='fan'+i;if(!S.users[id])S.users[id]={name:n,color:['#e17076','#7bc862','#65aadd','#a695e7','#ee7aae','#6ec9cb','#faa774'][i%7],bot:true,online:Math.random()<.6,lastSeen:now()}})}
 function chanChatOf(ch){return S.chats['cc_'+ch.id]}
 function openChanChat(ch){
-  if((ch.subs||0)<300){toast(`Чат канала откроется на 300 подписчиках · сейчас ${ch.subs||0}`);return}
+  if((ch.subs||0)<CHAT_MIN){toast(`Чат канала откроется на ${fmtK(CHAT_MIN)} подписчиках · сейчас ${fmtK(ch.subs||0)}`);return}
   ensureFans();let c=chanChatOf(ch);
   if(!c){c=S.chats['cc_'+ch.id]={id:'cc_'+ch.id,type:'group',chanChat:ch.id,title:'Чат · '+ch.title,color:ch.color,avatar:ch.avatar,members:FAN_NAMES.map((_,i)=>'fan'+i),admin:true,messages:[{id:uid(),sys:true,text:'Чат канала создан',time:now()}],muted:false};save()}
   closePopups();setTimeout(()=>openChat(c.id),300);
 }
+const CHAT_MIN=5000;
 function fanTick(){
   Object.values(S.chats).filter(c=>c.chanChat).forEach(c=>{const open=T.openChat===c.id;if(Math.random()>(open?.6:.05))return;
     const who=c.members[Math.floor(Math.random()*c.members.length)];const last=c.messages[c.messages.length-1];
