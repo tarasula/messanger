@@ -1487,7 +1487,7 @@ function ccClosed(c,t){t=t||Date.now();if(c.closedUntil&&c.closedUntil>t)return 
 function ccStrip(c,s){return ccPerm(c).emoji?s:s.replace(/\p{Extended_Pictographic}️?/gu,'').trim()||'ахах'}
 function ccSys(c,text){c.messages.push({id:uid(),sys:true,text,time:now()})}
 function ccPush(c,m){c.messages.push(m);if(c.messages.length>500)c.messages=c.messages.slice(-500);if(T.openChat!==c.id)c.unread=(c.unread||0)+1}
-function ccRender(c){save();if(T.openChat===c.id){renderMessages();try{updateHeadStatus();renderChatBottom()}catch(_){}}renderListIfVisible()}
+function ccRender(c){save();if(T.openChat===c.id){renderMessages();try{updateHeadStatus()}catch(_){}}renderListIfVisible()}
 /* a few members answer over the next seconds */
 function ccBurst(c,lines,n,from){if(ccClosed(c)||!ccPerm(c).text)return;const pool=from||ccActive(c).slice(0,40);if(!pool.length)return;let used=new Set();
   for(let k=0;k<n;k++){setTimeout(()=>{if(ccClosed(c)||!ccPerm(c).text)return;let i=pool[Math.floor(Math.random()*pool.length)];if(used.has(i)&&pool.length>used.size)i=pool.find(x=>!used.has(x));used.add(i);const who=ccUid(i);
@@ -1581,7 +1581,7 @@ function sccEvents(c,from,to){const cfg=sccCfg(c);if(!cfg.created)return [];cons
       if(sccPermAt(cfg,t).sticker&&hash32(sd+'st')%100<7){if(i>=0&&!sccClosedAt(cfg,t)&&sccPermAt(cfg,t).text&&!sccKickedAt(cfg,i,t))add('c'+m+'_'+q,t,{from:ccUid(i),text:'',sticker:`ax:${ASTK_PACKS[hash32(sd+'pk')%ASTK_PACKS.length].k}:${hash32(sd+'si')%10}`});continue}
       say('c'+m+'_'+q,t,i,CCL.chat,sd+'x')}}
   /* answers to real people (the admin and members) */
-  const real=(c.messages||[]).filter(m=>!m.sim&&!m.sys&&m.time>=from-120000&&m.time<=to);let ownerN=0;
+  const real=(c.messages||[]).filter(m=>!m.sim&&!m.sys&&m.status!=='failed'&&m.time>=from-120000&&m.time<=to);let ownerN=0;
   const isAdm=m=>m.from==='me'?c.admin:(c.admins||[]).includes(m.from);(c.messages||[]).filter(m=>!m.sim&&!m.sys&&isAdm(m)).forEach(m=>{m._on=++ownerN});
   real.forEach(m=>{const isAdmin=m.from==='me'?c.admin:(c.admins||[]).includes(m.from);const tx=(m.text||'').toLowerCase();let lines,n;
     if(isAdmin){if(/правил/.test(tx)){lines=CCL.rules;n=3+hash32(m.id+'n')%3}else if((m._on||9)<=3||/всем привет|привет всем|всем ку|хай всем/.test(tx)){lines=CCL.admin1;n=3+hash32(m.id+'n')%4}else{lines=CCL.admin;n=hash32(m.id+'n')%3}}
@@ -1607,11 +1607,12 @@ function sccInject(c){if(!c||!c.ccChan||!c.cc)return false;const t=Date.now();co
   const real=(c.messages||[]).filter(m=>!m.sim);const all=real.concat(ev).sort((a,b)=>a.time-b.time);const sig=all.length+':'+(all[all.length-1]||{}).id;
   c.messages=all;if(sig===c._simSig)return false;const grew=c._simSig&&ev.length&&!keep.has(ev[ev.length-1].id);c._simSig=sig;if(grew&&T.openChat!==c.id)c.unread=(c.unread||0)+1;return true}
 function sccTick(){const t=Date.now();Object.values(S.chats).filter(c=>c.ccChan&&c.cc&&c.remote).forEach(c=>{
-  if(sccInject(c)){if(T.openChat===c.id){renderMessages();try{updateHeadStatus();renderChatBottom()}catch(_){}}renderListIfVisible()}
+  if(sccInject(c)){if(T.openChat===c.id){renderMessages();try{updateHeadStatus()}catch(_){}}renderListIfVisible()}
+  if(T.openChat===c.id&&!c.admin){const cfg=sccCfg(c);const k=(sccClosedAt(cfg,t)?'c':'o')+(cfg.perm.text?1:0);if(k!==c._bk){const first=c._bk===undefined;c._bk=k;if(!first)try{renderChatBottom()}catch(_){}}}
   if(T.openChat===c.id){const nx=sccEvents(c,t,t+1800).find(e=>e.from&&!e.sys);if(nx&&!T.typing[c.id]){T.typing[c.id]=nx.from;updateTyping(c);setTimeout(()=>{if(T.typing[c.id]===nx.from){delete T.typing[c.id];updateTyping(c)}},1900)}}})}
 setInterval(sccTick,1000);
 /* settings changes are written into the chat itself so every member gets them */
-async function sccSave(c,patch){const cfg=Object.assign(sccCfg(c),patch);c.cc=cfg;c._simSig='';sccInject(c);if(T.openChat===c.id){renderMessages();renderChatBottom();updateHeadStatus()}
+async function sccSave(c,patch){const cfg=Object.assign(sccCfg(c),patch);c.cc=cfg;c._simSig='';sccInject(c);if(T.openChat===c.id){renderMessages();updateHeadStatus()}
   try{const F=FBX();await F.updateDoc(F.doc(F.db,'chats',c.rid),{cc:cfg})}catch(e){toast(fbErr(e))}}
 /* joining: directly if the database allows it, otherwise the admin's app adds you */
 async function sccJoin(ch){const rid=ch.chatRid;if(!rid){toast('У этого канала пока нет чата');return}
@@ -1795,7 +1796,8 @@ function renderMessages(jump){
     let tk='';
     if(isOut&&!isPost){
       if(m.status==='scheduled')tk=`<span class="tk">${IC.clock}</span>`;
-      else if(m.status==='waiting'||m.status==='retry')tk='<span class="tk">⏳</span>';
+      else if(m.status==='waiting'||m.status==='retry'||m.status==='sending')tk='<span class="tk">⏳</span>';
+      else if(m.status==='failed')tk='<span class="tk" style="color:#ff3b30;font-weight:700">!</span>';
       else tk=`<span class="tk">${m.status==='read'?IC.check2:IC.check}</span>`;
     }
     const timeTxt=m.status==='scheduled'?(dayLabel(m.schedAt)==='Сегодня'?'':dayLabel(m.schedAt)+' ')+hhmm(m.schedAt):hhmm(m.time);
@@ -1913,6 +1915,7 @@ function openMsgMenu(id,row){
 }
 function askDelete(m){
   const c=S.chats[T.openChat];
+  if(m.status==='failed'){actionSheet('Сообщение не отправлено'+(m.err?' ('+m.err+')':''),[{label:'Отправить ещё раз',fn:()=>{c.pending=c.pending.filter(x=>x!==m);c.messages=c.messages.filter(x=>x!==m);save();remoteWrite(c,{...m.payload,time:Date.now()})}},{label:'Удалить',red:true,fn:()=>{c.pending=c.pending.filter(x=>x!==m);c.messages=c.messages.filter(x=>x!==m);save();renderMessages()}}]);return}
   if(m.status==='scheduled'||m.status==='waiting'||m.status==='retry'||c.type==='channel'){actionSheet('Удалить сообщение?',[{label:'Удалить',red:true,fn:()=>deleteMessage(m.id,true)}]);return}
   const acts=[{label:'Удалить у меня',red:true,fn:()=>deleteMessage(m.id,false)}];
   if(c.type==='private'||m.from==='me'||c.admin)acts.push({label:'Удалить у всех',red:true,fn:()=>deleteMessage(m.id,true)});
@@ -4609,7 +4612,7 @@ function applyChatDoc(id,d){
   c.remote=true;c.rid=id;c.type=d.type==='group'?'group':'private';c.pending=c.pending||[];
   if(c.type==='private'){const other=(d.members||[]).find(x=>x!==RT.uid)||RT.uid;c.user=other;watchUser(other)}
   else{c.title=d.title||'Группа';c.color=d.color||'#65aadd';c.avatar=d.avatar||null;c.emoji=null;c.members=(d.members||[]).filter(x=>x!==RT.uid);c.admin=(d.admins||[]).includes(RT.uid);c.admins=d.admins||[];c.members.forEach(watchUser)}
-  c.reads=d.reads||{};c.lastTime=d.updatedAt||0;if(d.chanOf){const fresh=JSON.stringify(d.cc||null)!==JSON.stringify(c.cc||null);c.ccChan=d.chanOf;c.cc=d.cc||null;if(fresh){c._simSig='';sccInject(c);if(T.openChat===L){renderMessages();try{renderChatBottom()}catch(_){}}}}
+  c.reads=d.reads||{};c.lastTime=d.updatedAt||0;if(d.chanOf){const fresh=JSON.stringify(d.cc||null)!==JSON.stringify(c.cc||null);c.ccChan=d.chanOf;c.cc=d.cc||null;if(fresh){c._simSig='';sccInject(c);if(T.openChat===L)renderMessages()}}
   const tp=d.typing||{};let ty=null,act='type',best=0;Object.entries(tp).forEach(([k,t])=>{const [u,a]=k.split('|');if(u!==RT.uid&&Date.now()-t<6000&&t>best){best=t;ty=u;act=a||'type'}});T.typAct=T.typAct||{};T.typAct[L]=act;
   if(ty){T.typing[L]=ty;clearTimeout(c._tyT);c._tyT=setTimeout(()=>{if(T.typing[L]===ty){delete T.typing[L];updateTyping(c)}},6000)}else delete T.typing[L];
   if(T.openChat===L)updateHeadStatus();
@@ -4632,7 +4635,7 @@ function recomputeStatus(c){
     if(m.time<=maxRead&&!S.readAt[m.id])S.readAt[m.id]=Math.max(m.time,maxRead);
     if(!S.dlvAt[m.id]&&(S.readAt[m.id]||(peer&&peer.online)||(peer&&peer.lastSeen>m.time)))S.dlvAt[m.id]=Math.max(m.time,Math.min(S.readAt[m.id]||Date.now(),peer&&peer.lastSeen>m.time?peer.lastSeen:Date.now()));});
   const ks=Object.keys(S.readAt);if(ks.length>3000)ks.slice(0,1000).forEach(k=>{delete S.readAt[k];delete S.dlvAt[k]});
-  c.messages.forEach(m=>{if(m.from==='me'&&!m.sys&&m.status!=='scheduled'&&m.status!=='waiting')m.status=m.time<=maxRead?'read':'sent'});
+  c.messages.forEach(m=>{if(m.from==='me'&&!m.sys&&!['scheduled','waiting','retry','failed','sending'].includes(m.status))m.status=m.time<=maxRead?'read':'sent'});
   const mine=(c.reads||{})[RT.uid]||0;
   c.unread=T.openChat===c.id?0:c.messages.filter(m=>m.from!=='me'&&!m.sys&&m.time>mine).length;
 }
@@ -4648,7 +4651,8 @@ function watchMessages(c,attempt){
     if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();if(ntf()[c.type==='private'?'dm':'gr']){localNotify(c,nm);inAppBanner(c,nm)}}catch(_){}}first=false;
     list.sort((a,b)=>a.time-b.time);
     {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
-    c.messages=list.concat(c.pending||[]);if(c.ccChan){c._simSig='';sccInject(c)}
+    {const ids=new Set(list.map(m=>m.id));c.pending=(c.pending||[]).filter(p=>!ids.has(p.id))}
+    c.messages=list.concat((c.pending||[]).filter(p=>!list.some(m=>m.id===p.id)));if(c.ccChan){c._simSig='';sccInject(c)}
     recomputeStatus(c);save();
     if(T.openChat===c.id){renderMessages();markRemoteRead(c)}
     renderListIfVisible();
@@ -4690,19 +4694,23 @@ async function remoteWrite(c,d){
   if(JSON.stringify(d).length>900000){toast('Слишком большой файл — до ~600 КБ');return false}
   if(c.type==='private'&&S.users[c.user]?.blocked){toast('Вы заблокировали этого пользователя');return false}
   const ref=F.doc(F.collection(F.db,'chats',c.rid,'messages'));T.justSent=ref.id;
+  let echo=null;if(!d.sig&&!d.part&&d.themeSet===undefined){echo={id:ref.id,echo:1,from:'me',text:d.text||'',time:d.time||now(),status:'sending',reactions:{},payload:d};['img','voice','video','sticker','poll','spoiler','reply','fwd'].forEach(k=>{if(d[k]!==undefined)echo[k]=d[k]});
+    c.pending=c.pending||[];c.pending.push(echo);if(!c.messages.some(m=>m.id===ref.id))c.messages.push(echo);if(T.openChat===c.id)renderMessages()}
+  const dropEcho=()=>{if(!echo)return;c.pending=(c.pending||[]).filter(x=>x!==echo);c.messages=c.messages.filter(x=>x!==echo)};
   try{
     await F.setDoc(ref,d);
     const pv=d.call?(d.call.video?'🎥 Видеозвонок':'📞 Звонок'):d.video?(d.video.round?'⭕ Видеосообщение':'🎬 Видео'):d.voice?'🎤 Голосовое сообщение':d.poll?'📊 '+d.poll.q:d.img?'🖼 Фото':d.sticker?'Стикер':d.spoiler?'▒▒▒▒▒▒':(d.text||'').slice(0,120);
     F.updateDoc(F.doc(F.db,'chats',c.rid),{lastMsg:{text:pv,from:RT.uid,time:d.time},updatedAt:d.time,[`typing.${RT.uid}`]:0}).catch(()=>{});
     try{pushForMessage(c,d,pv)}catch(_){}
     return true;
-  }catch(e){const code=e&&e.code||'';
+  }catch(e){const code=e&&e.code||'';dropEcho();
     if(/resource-exhausted|unavailable|deadline-exceeded|internal|aborted/.test(code)&&!d.sig&&!d.part&&d.themeSet===undefined){
       const m={id:'p'+uid(),from:'me',text:d.text,time:d.time||now(),status:'retry',tries:0,lastTry:Date.now(),reactions:{},payload:d};if(d.img)m.img=d.img;if(d.voice)m.voice=d.voice;if(d.spoiler)m.spoiler=true;
       c.pending=c.pending||[];c.pending.push(m);c.messages.push(m);save();if(T.openChat===c.id)renderMessages();
       if(Date.now()-(RT.quotaToast||0)>10*60000){RT.quotaToast=Date.now();toast(code==='resource-exhausted'?'Сервер исчерпал дневной лимит. Сообщение отправится само, как только лимит обновится':'Нет связи с сервером. Сообщение отправится само')}
       return false}
-    toast(e&&e.code==='permission-denied'&&c.type==='private'?'Сообщение не доставлено: вас заблокировали':fbErr(e));return false}
+    if(echo&&!d.sig){echo.status='failed';echo.err=code||String(e&&e.message||e);c.pending.push(echo);c.messages.push(echo);save();if(T.openChat===c.id)renderMessages()}
+    toast((e&&e.code==='permission-denied'&&c.type==='private'?'Сообщение не доставлено: вас заблокировали':'Не отправлено: '+fbErr(e))+(code?' ('+code+')':''));return false}
 }
 function remoteSend(c,o,when){
   const d=msgPayload({...o,reply:T.reply||undefined});if(T.reply)clearReply();
@@ -4715,7 +4723,7 @@ function remoteSend(c,o,when){
   remoteWrite(c,d);
 }
 setInterval(()=>{Object.values(S.chats).forEach(c=>{if(!c.remote||!c.pending||!c.pending.length)return;
-  c.pending.slice().forEach(p=>{if(p.status==='retry'){if(Date.now()-(p.lastTry||0)>Math.min(10*60000,60000*Math.pow(1.5,p.tries||0))){const tr=(p.tries||0)+1;c.pending=c.pending.filter(x=>x!==p);c.messages=c.messages.filter(x=>x!==p);save();remoteWrite(c,{...p.payload}).then(ok=>{if(!ok){const q=c.pending.find(x=>x.status==='retry'&&x.payload===p.payload)||c.pending[c.pending.length-1];if(q&&q.status==='retry')q.tries=tr}})}return}
+  c.pending.slice().forEach(p=>{if(p.echo||!['scheduled','waiting','retry'].includes(p.status))return;if(p.status==='retry'){if(Date.now()-(p.lastTry||0)>Math.min(10*60000,60000*Math.pow(1.5,p.tries||0))){const tr=(p.tries||0)+1;c.pending=c.pending.filter(x=>x!==p);c.messages=c.messages.filter(x=>x!==p);save();remoteWrite(c,{...p.payload}).then(ok=>{if(!ok){const q=c.pending.find(x=>x.status==='retry'&&x.payload===p.payload)||c.pending[c.pending.length-1];if(q&&q.status==='retry')q.tries=tr}})}return}
     const due=p.status==='scheduled'?p.schedAt<=now():(c.type==='private'&&S.users[c.user]?.online);
     if(due){c.pending=c.pending.filter(x=>x!==p);c.messages=c.messages.filter(x=>x!==p);save();remoteWrite(c,{...p.payload,time:Date.now()})}})})},4000);
 function remoteReact(c,id,e){
