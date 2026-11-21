@@ -1276,6 +1276,7 @@ function headStatus(c){
   const ty=T.typing[c.id];
   if(ty)return {t:`${c.type==='group'?esc(S.users[ty].name.split(' ')[0])+' ':''}${actHTML(c.id)}`,blue:true};
   if(c.type==='private'){const u=S.users[c.user];if(u.blocked)return {t:'заблокирован(а)'};return {t:statusText(u),blue:u.online}}
+  if(c.chanChat){const n=ccCount(c),cl=ccClosed(c);return {t:cl?`чат закрыт до ${hhmm(cl.until)}`:`${fmtK(n)} ${plural(n>=1000?5:n,'участник','участника','участников')}`}}
   if(c.type==='group'){const on=c.members.filter(m=>S.users[m]?.online).length;return {t:`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}${on?`, ${on} в сети`:''}`}}
   if(NOBOTS&&(c.feed||c.news))return {t:c.subscribed?'вы подписаны':'канал'};
   return {t:`${fmtK(c.subs)} ${plural(c.subs>=1000?5:c.subs,'подписчик','подписчика','подписчиков')}`};
@@ -1294,7 +1295,7 @@ function renderChatHead(){
 function updateHeadStatus(){const c=S.chats[T.openChat];if(!c)return;const el=$('#chatHead .s');if(!el)return;const st=headStatus(c);if(el.innerHTML!==st.t){el.innerHTML=st.t;el.classList.toggle('blue',!!st.blue)}}
 function openProfile(){
   const c=S.chats[T.openChat];if(!c)return;
-  if(c.type==='private')openUserProfile(c.user);else openGroupProfile(c);
+  if(c.type==='private')openUserProfile(c.user);else if(c.chanChat)openChanChatInfo(c);else openGroupProfile(c);
 }
 function askClear(c){
   const who=c.type==='private'?` с ${S.users[c.user].name.split(' ')[0]}`:'';
@@ -1448,26 +1449,104 @@ function openSchedule(){
   });
 }
 
-/* ---- channel chat for your own channel (opens at 300 subscribers): fans chatting in slang ---- */
 const FAN_NAMES=['Тёма','Ксю','Лёха','Мила','Даня','Варя','Кирюха','Соня','Макс','Лиза','Гоша','Ника','Ярик','Полина','Стёпа','Аня','Влад','Даша','Тимур','Ева'];
 const FAN_LINES=['хахахаха','ахахаха жиза','ору 😂😂','кринж 💀','имба','рил','база','го ещё пост','лол','пон','это сигма','вайб топ','ну это мощно','ахах я в шоке','краш','жесть 🔥','топчик','реально ору','а когда новый пост?','легенда','хаха ну это слишком','это я каждый день','ммм ну такое','согл','не верю 😳','бро ты гений','сохранил','лучший канал','ахахах я плачу','кто тоже с телефона? 👋','ну всё, я фанат','это база базированная','ноу коммент 😶','хи-хи','пушка 💣','вот это поворот','скинул другу','админ топ 👑'];
 const FAN_REPLY=['ахахах {n}, жиза','{n} рил','хаха {n} ору','{n}, согл','{n} база','{n} кринж 💀','ахаха {n} ты чего','{n} лол','+','++','плюс','{n} пон'];
 function ensureFans(){FAN_NAMES.forEach((n,i)=>{const id='fan'+i;if(!S.users[id])S.users[id]={name:n,color:['#e17076','#7bc862','#65aadd','#a695e7','#ee7aae','#6ec9cb','#faa774'][i%7],bot:true,online:Math.random()<.6,lastSeen:now()}})}
+const CHAT_MIN=5000;
+/* ---- channel chat (opens at 5000 subscribers): people join one by one, react, discuss posts; admin can kick, set permissions and hours ---- */
+const CC_NAMES=['Тёма','Ника','Менталист','Смешарик','Джексу','Цепце','Крош_228','Нюша','Бараш','Шлёпа','Кринжулька','Сигма_бой','Вайбик','Пельмешка','Тупа_Влад','Бубылда','Чипи_чапа','Дед_инсайд','Флексер','Пупсик','Ржака','Нямка','Хомяк','Тыква','Кузя','Морковка','Зефирка','Масик','Жмых','Бебра','Шнейне','Пиксель','Ноунейм','Мандаринка','Огурчик','Крутыш','Пчёлка','Чебурек','Абобус','Гений_мысли','Кибер_Кирилл','Тигра','Подорожник','Сосиска','Глебыч','Вайпер','Пуфик','Фыр','Мармеладка','Кексик','Бро_Даня','Ксю_ня','Йогурт','Тапок','Котлетка','Дракоша','Арбузик','Фантик','Лёха','Мила','Варя','Кирюха','Соня','Макс','Лиза','Гоша','Ярик','Полина','Стёпа','Аня','Влад','Даша','Тимур','Ева','Ксю','Даня','Шарик','Бусинка','Сырок','Чиназес','Плюшка','Лапша','Батон','Кактус','Ёжик','Совёнок','Тапочек','Пончик','Мурзик','Кокос','Бублик','Панда','Лис','Ветерок','Краш_Лера','Тот_самый_Саня','Просто_Аня','Вася_вайб','Мэдисон','Тиктокер'];
+const CC_SUF=['','_228','2011','_true','_ok','777','_love','007','_lol','_go','2012','_x'];
+const CC_COLORS=['#e17076','#7bc862','#65aadd','#a695e7','#ee7aae','#6ec9cb','#faa774','#5c9df0'];
+const CC_MAX=3000;
+function ccName(i){const B=CC_NAMES.length;return CC_NAMES[(i*37)%B]+(i>=B?CC_SUF[1+Math.floor(i/B)%(CC_SUF.length-1)]:'')}
+function ccUid(i){const id='cf'+i;if(!S.users[id])S.users[id]={name:ccName(i),color:CC_COLORS[i%CC_COLORS.length],online:Math.random()<.5,lastSeen:now()};return id}
+const CCL={
+ join1:['чего?? он создал чат','стоп, что','не может быть, чат открыли','офигеть','первыыый!!!','ааа чат!!!','ЧАТ?? реально?','наконец-то чат','ору, чат','так, я тут','это не сон?','кто тут живой','жееесть','я думал не дождусь','всем ку 👋'],
+ join:['всем ку','привет всем','я новенький','о, тут чат','ку','хай','приветики','кто тут','я с поста пришёл','тут живые есть?','йоу'],
+ admin1:['ОФИГЕТЬ это админ','не может быть, админ написал','АДМИН ПИШЕТ','ааа привет!!','привееет','это реально ты??','скрин сделал','лучший админ','я в шоке','админ, ты легенда','ааа он ответил'],
+ admin:['админ +','согл с админом','ахах админ','пон','админ топ','база','принято','админ знает','рил'],
+ rules:['окей понял','принято','а мемы можно?','понял не дурак','всё ясно','буду хорошим','а флудить можно?','правила топ','ок ок'],
+ post:['видели новый пост?','го читать пост','пост топ','кто уже прочитал?','ахах пост база','новый пост 🔥','ну это сильно','я ждал этот пост','админ выдал','лайкнул','пост имба'],
+ kick:['ахах {n} кикнули','F','за что его','пон','{n} всё','кикнули лол','админ строгий','ну и правильно'],
+ open:['ура чат открыли','доброе утро','наконец','я ждал','всем ку, чат снова открыт','йоо','проснулся ради этого'],
+ chat:['хахахаха','ахахаха жиза','ору','кринж','имба','рил','база','го ещё пост','лол','пон','это сигма','вайб топ','ну это мощно','я в шоке','жесть 🔥','топчик','реально ору','а когда новый пост?','легенда','согл','не верю','бро ты гений','лучший канал','скибиди','краш','чиназес','это мой вайб','нормис','я ору с этого чата','кто смотрел последнюю серию?','го в войс','спойлеры не пишите','ахах вы чего','мне лень','кто из какого города?','я из Белграда','у меня завтра контрольная','кто тоже не спит?','это шедевр','бро','жиза полная'],
+ reply:['ахах {n}, жиза','{n} рил','хаха {n} ору','{n}, согл','{n} база','ахаха {n} ты чего','{n} лол','+','++','плюс','{n} пон']};
+const ccPick=a=>a[Math.floor(Math.random()*a.length)];
+function ccPerm(c){return Object.assign({text:1,photo:1,emoji:1,sticker:1},c.perm||{})}
+function ccCount(c){return Math.max(0,(c.joinN||0)-(c.kicked||[]).length)}
+function ccActive(c){const k=new Set(c.kicked||[]);const out=[];for(let i=(c.joinN||0)-1;i>=0&&out.length<80;i--)if(!k.has(i))out.push(i);return out}
+function hm2min(s){const m=/^(\d{1,2}):(\d{2})$/.exec(s||'');return m?(+m[1])*60+(+m[2]):null}
+function ccClosed(c,t){t=t||Date.now();if(c.closedUntil&&c.closedUntil>t)return {until:c.closedUntil};const sc=c.sched;if(!sc||!sc.on)return null;
+  const a=hm2min(sc.close),b=hm2min(sc.open);if(a==null||b==null||a===b)return null;const d=new Date(t),m=d.getHours()*60+d.getMinutes();
+  const inside=a<b?(m>=a&&m<b):(m>=a||m<b);if(!inside)return null;const u=new Date(t);u.setHours(Math.floor(b/60),b%60,0,0);if(u.getTime()<=t)u.setDate(u.getDate()+1);return {until:u.getTime()}}
+function ccStrip(c,s){return ccPerm(c).emoji?s:s.replace(/\p{Extended_Pictographic}️?/gu,'').trim()||'ахах'}
+function ccSys(c,text){c.messages.push({id:uid(),sys:true,text,time:now()})}
+function ccPush(c,m){c.messages.push(m);if(c.messages.length>500)c.messages=c.messages.slice(-500);if(T.openChat!==c.id)c.unread=(c.unread||0)+1}
+function ccRender(c){save();if(T.openChat===c.id){renderMessages();try{updateHeadStatus();renderChatBottom()}catch(_){}}renderListIfVisible()}
+/* a few members answer over the next seconds */
+function ccBurst(c,lines,n,from){if(ccClosed(c)||!ccPerm(c).text)return;const pool=from||ccActive(c).slice(0,40);if(!pool.length)return;let used=new Set();
+  for(let k=0;k<n;k++){setTimeout(()=>{if(ccClosed(c)||!ccPerm(c).text)return;let i=pool[Math.floor(Math.random()*pool.length)];if(used.has(i)&&pool.length>used.size)i=pool.find(x=>!used.has(x));used.add(i);const who=ccUid(i);
+    const go=()=>{if(ccClosed(c)||!ccPerm(c).text)return;let tx;if(typeof lines==='function')tx=lines(i);else{c.recent=c.recent||[];const fresh=lines.filter(x=>!c.recent.includes(x));tx=ccPick(fresh.length?fresh:lines);c.recent.push(tx);if(c.recent.length>12)c.recent.shift()}ccPush(c,{id:uid(),from:who,text:ccStrip(c,tx),time:now(),status:'read',reactions:{}});ccRender(c)};
+    if(T.openChat===c.id){T.typing[c.id]=who;updateTyping(c);setTimeout(()=>{delete T.typing[c.id];updateTyping(c);go()},600+Math.random()*900)}else go()},1200+k*(1500+Math.random()*2500))}}
+function ccGap(c,k){return (k<3?25:k<10?70:120)+hash32(c.id+'#'+k)%(k<10?90:240)} /* seconds until member k+1 joins */
+function ccJoinTick(c){const t=Date.now();if(!c.v2)return;let added=[];let guard=0;
+  while((c.joinN||0)<CC_MAX&&guard<400){const due=(c.nextJoin||(c.created+ccGap(c,0)*1000));if(due>t)break;c.joinN=(c.joinN||0)+1;added.push(c.joinN-1);c.nextJoin=due+ccGap(c,c.joinN)*1000;guard++}
+  if(guard>=400)c.nextJoin=t+ccGap(c,c.joinN)*1000;
+  if(!added.length)return;c.members=ccActive(c).slice(0,60).map(ccUid);
+  const nm=added.slice(-3).map(i=>ccName(i));const more=added.length-nm.length;
+  ccSys(c,added.length===1?`${nm[0]} вступил(а) в чат`:`${nm.join(', ')}${more>0?` и ещё ${more}`:''} вступили в чат`);
+  const live=added.length<=2;if(live&&!ccClosed(c)&&ccPerm(c).text){const first=(c.joinN||0)<=15;if(first||Math.random()<.35)ccBurst(c,first?CCL.join1:CCL.join,1,added)}
+  ccRender(c)}
+function ccChatTick(c){if(!c.v2)return;const cl=ccClosed(c);
+  if(cl&&!c.wasClosed){c.wasClosed=1;ccSys(c,`Чат закрыт до ${dayLabel(cl.until)==='Сегодня'?'':dayLabel(cl.until).toLowerCase()+' '}${hhmm(cl.until)}`);ccRender(c);return}
+  if(!cl&&c.wasClosed){c.wasClosed=0;ccSys(c,'Чат снова открыт');ccRender(c);ccBurst(c,CCL.open,2+Math.floor(Math.random()*3));return}
+  if(cl||!ccPerm(c).text)return;
+  /* new post in the channel -> discussion */
+  const ch=S.chats[c.chanChat];if(ch){const lp=[...ch.messages].reverse().find(m=>!m.sys&&m.from!=='bot');if(lp&&lp.id!==c.lastPostSeen){const first=!c.lastPostSeen;c.lastPostSeen=lp.id;
+    if(!first&&Date.now()-(lp.time||0)<10*60000){const tt=(lp.title||lp.text||'').split('\n')[0].slice(0,40);ccBurst(c,i=>Math.random()<.3&&tt?`«${tt}» — ну это база`:ccPick(CCL.post),2+Math.floor(Math.random()*4))}}}
+  const open=T.openChat===c.id;const act=Math.min(1,.15+ccCount(c)/400);if(Math.random()>(open?.45*act+.1:.03*act))return;
+  const pool=ccActive(c).slice(0,50);if(!pool.length)return;const i=ccPick(pool);const who=ccUid(i);const last=c.messages[c.messages.length-1];
+  const p=ccPerm(c);if(p.sticker&&Math.random()<.08){const pk=ccPick(ASTK_PACKS).k;ccPush(c,{id:uid(),from:who,text:'',sticker:`ax:${pk}:${Math.floor(Math.random()*10)}`,time:now(),status:'read',reactions:{}});ccRender(c);return}
+  let text;if(last&&last.from&&last.from!==who&&!last.sys&&Math.random()<.35){const nm=last.from==='me'?(S.me.name||'админ').split(' ')[0]:(S.users[last.from]?.name||'');text=ccPick(CCL.reply).replace('{n}',nm)}else text=ccPick(CCL.chat);
+  const m={id:uid(),from:who,text:ccStrip(c,text),time:now(),status:'read',reactions:{}};
+  if(open){T.typing[c.id]=who;updateTyping(c);setTimeout(()=>{delete T.typing[c.id];updateTyping(c);ccPush(c,m);ccRender(c)},700+Math.random()*1200)}else{ccPush(c,m);ccRender(c)}}
+function fanTick(){Object.values(S.chats).filter(c=>c.chanChat).forEach(c=>{if(!c.v2)ccUpgrade(c);ccJoinTick(c);ccChatTick(c)})}
+function ccUpgrade(c){c.v2=1;c.created=c.created||now();c.joinN=0;c.kicked=[];c.nextJoin=now()+20000;c.members=[];c.perm=ccPerm(c);c.lastPostSeen=null;ccSys(c,'Чат обновлён: участники заходят по одному')}
+/* the admin wrote something */
+function ccOnOwner(c,m){if(!c||!c.chanChat||!c.v2)return;const tx=(m.text||'').toLowerCase();c.ownerMsgs=(c.ownerMsgs||0)+1;
+  if(/правил/.test(tx))ccBurst(c,CCL.rules,3+Math.floor(Math.random()*3));
+  else if(c.ownerMsgs<=3||/всем привет|привет всем|всем ку|hello|хай всем/.test(tx))ccBurst(c,CCL.admin1,3+Math.floor(Math.random()*4));
+  else if(Math.random()<.7)ccBurst(c,CCL.admin,1+Math.floor(Math.random()*3))}
 function chanChatOf(ch){return S.chats['cc_'+ch.id]}
 function openChanChat(ch){
   if((ch.subs||0)<CHAT_MIN){toast(`Чат канала откроется на ${fmtK(CHAT_MIN)} подписчиках · сейчас ${fmtK(ch.subs||0)}`);return}
-  ensureFans();let c=chanChatOf(ch);
-  if(!c){c=S.chats['cc_'+ch.id]={id:'cc_'+ch.id,type:'group',chanChat:ch.id,title:'Чат · '+ch.title,color:ch.color,avatar:ch.avatar,members:FAN_NAMES.map((_,i)=>'fan'+i),admin:true,messages:[{id:uid(),sys:true,text:'Чат канала создан',time:now()}],muted:false};save()}
-  closePopups();setTimeout(()=>openChat(c.id),300);
-}
-const CHAT_MIN=5000;
-function fanTick(){
-  Object.values(S.chats).filter(c=>c.chanChat).forEach(c=>{const open=T.openChat===c.id;if(Math.random()>(open?.6:.05))return;
-    const who=c.members[Math.floor(Math.random()*c.members.length)];const last=c.messages[c.messages.length-1];
-    let text;if(last&&last.from&&last.from!==who&&!last.sys&&Math.random()<.4){const nm=last.from==='me'?(S.me.name||'админ').split(' ')[0]:(S.users[last.from]?.name||'');text=FAN_REPLY[Math.floor(Math.random()*FAN_REPLY.length)].replace('{n}',nm)}else text=FAN_LINES[Math.floor(Math.random()*FAN_LINES.length)];
-    const m={id:uid(),from:who,text,time:now(),status:'read',reactions:{}};if(last&&last.from==='me'&&Math.random()<.5)m.reply={id:last.id,from:'me',text:(last.text||'').slice(0,60)};
-    const go=()=>{c.messages.push(m);if(c.messages.length>400)c.messages=c.messages.slice(-400);if(!open)c.unread=(c.unread||0)+1;save();if(T.openChat===c.id)renderMessages();renderListIfVisible()};
-    if(open){T.typing[c.id]=who;updateTyping(c);setTimeout(()=>{delete T.typing[c.id];updateTyping(c);go()},700+Math.random()*1200)}else go()})}
+  let c=chanChatOf(ch);if(c){closePopups();setTimeout(()=>openChat(c.id),300);return}
+  actionSheet('Создать чат канала? Вы уверены? Подписчики начнут заходить и общаться',[{label:'Создать чат',fn:()=>{
+    c=S.chats['cc_'+ch.id]={id:'cc_'+ch.id,type:'group',chanChat:ch.id,title:'Чат · '+ch.title,color:ch.color,avatar:ch.avatar,members:[],admin:true,v2:1,created:now(),joinN:0,kicked:[],nextJoin:now()+15000,perm:{text:1,photo:1,emoji:1,sticker:1},
+      messages:[{id:uid(),sys:true,text:'Вы создали чат канала',time:now()}],muted:false};save();closePopups();setTimeout(()=>openChat(c.id),300)}}])}
+function ccKick(c,i){c.kicked=c.kicked||[];if(c.kicked.includes(i))return;c.kicked.push(i);const n=ccName(i);ccSys(c,`${n} удалён(а) из чата`);c.members=ccActive(c).slice(0,60).map(ccUid);ccRender(c);ccBurst(c,CCL.kick.map(x=>x.replace('{n}',n)),1+Math.floor(Math.random()*3))}
+function openChanChatInfo(c){const ch=S.chats[c.chanChat];const cl=ccClosed(c);const p=ccPerm(c);const sc=c.sched||{on:0,close:'23:00',open:'08:00'};
+  const act=ccActive(c);
+  openSheet('Чат канала',`<div class="pf-top">${avHTML({name:c.title,color:c.color,img:c.avatar},84)}<h2>${esc(c.title)}</h2><div class="pf-st">${fmtK(ccCount(c))} ${plural(ccCount(c)>=1000?5:ccCount(c),'участник','участника','участников')}${cl?' · закрыт до '+hhmm(cl.until):''}</div></div>
+   <div class="sec-h">Разрешения участникам</div><div class="grp">${[['text','Отправлять сообщения'],['photo','Отправлять фото'],['emoji','Смайлики'],['sticker','Стикеры']].map(([k,l])=>`<div class="r cc-p" data-k="${k}">${l}<span class="sw ${p[k]?'on':''}"></span></div>`).join('')}</div>
+   <div class="sec-h">Время работы чата</div><div class="grp">
+    <div class="r" id="ccSchOn">Закрывать на ночь<span class="sw ${sc.on?'on':''}"></span></div>
+    <div class="r">Закрывается в<input type="time" id="ccClose" value="${esc(sc.close)}" style="flex:0 0 auto;margin-left:auto"></div>
+    <div class="r">Открывается в<input type="time" id="ccOpen" value="${esc(sc.open)}" style="flex:0 0 auto;margin-left:auto"></div></div>
+   <div class="grp"><div class="r">Закрыть до<input type="datetime-local" id="ccUntil" style="flex:0 0 auto;margin-left:auto;color-scheme:dark"></div>
+    <div class="r" id="ccLock" style="color:var(--ac)">Закрыть чат до этого времени</div>${c.closedUntil&&c.closedUntil>Date.now()?'<div class="r" id="ccUnlock" style="color:#34c759">Открыть чат сейчас</div>':''}</div>
+   <div class="sec-h">Участники · нажмите, чтобы удалить</div><div class="grp cc-mem">${act.slice(0,60).map(i=>{const u=S.users[ccUid(i)];return `<div class="r" data-i="${i}">${avHTML({name:u.name,color:u.color},34)}<span>${esc(u.name)}</span></div>`}).join('')||'<div class="r dis">Пока никого — участники скоро начнут заходить</div>'}</div>
+   <div class="grp"><div class="r red" id="ccDel">Удалить чат</div></div>`,sh=>{
+   sh.querySelectorAll('.cc-p').forEach(r=>r.onclick=()=>{const k=r.dataset.k;c.perm=ccPerm(c);c.perm[k]=c.perm[k]?0:1;r.querySelector('.sw').classList.toggle('on',!!c.perm[k]);
+     ccSys(c,'Администратор '+(c.perm[k]?'разрешил':'запретил')+': '+({text:'отправлять сообщения',photo:'отправлять фото',emoji:'смайлики',sticker:'стикеры'})[k]);ccRender(c)});
+   const saveSch=()=>{c.sched={on:sh.querySelector('#ccSchOn .sw').classList.contains('on')?1:0,close:sh.querySelector('#ccClose').value||'23:00',open:sh.querySelector('#ccOpen').value||'08:00'};save();ccChatTick(c)};
+   sh.querySelector('#ccSchOn').onclick=()=>{sh.querySelector('#ccSchOn .sw').classList.toggle('on');saveSch();toast(c.sched.on?`Чат будет закрыт с ${c.sched.close} до ${c.sched.open}`:'Ночное закрытие выключено')};
+   sh.querySelector('#ccClose').onchange=saveSch;sh.querySelector('#ccOpen').onchange=saveSch;
+   sh.querySelector('#ccLock').onclick=()=>{const v=sh.querySelector('#ccUntil').value;const t=v?new Date(v).getTime():0;if(!t||t<=Date.now()){toast('Выберите дату и время в будущем');return}c.closedUntil=t;save();ccChatTick(c);closePopups();toast('Чат закрыт до '+dayLabel(t).toLowerCase()+' '+hhmm(t))};
+   sh.querySelector('#ccUnlock')?.addEventListener('click',()=>{c.closedUntil=0;save();ccChatTick(c);closePopups()});
+   sh.querySelectorAll('.cc-mem .r[data-i]').forEach(r=>r.onclick=()=>{const i=+r.dataset.i;actionSheet(`Удалить ${ccName(i)} из чата?`,[{label:'Удалить из чата',red:true,fn:()=>{ccKick(c,i);setTimeout(()=>openChanChatInfo(c),350)}}])});
+   sh.querySelector('#ccDel').onclick=()=>actionSheet('Удалить чат канала со всеми сообщениями?',[{label:'Удалить чат',red:true,fn:()=>{delete S.chats[c.id];save();closePopups();if(T.openChat===c.id)closeChat?.();renderListIfVisible()}}])})}
 setInterval(fanTick,2600);
 
 function fade(c){if(!c.peakAt)return 1;const d=(Date.now()-c.peakAt)/DAY;return Math.max(.2,1-d*.06)}
@@ -1488,6 +1567,7 @@ function sendMessage(o,when){
   if(m.status==='sent'&&c.type==='channel'&&c.owner){c.lastPost=Date.now();c.lastWait=postWait(c);setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},50);{if((c.subs||0)>=10000&&!c.peakAt)c.peakAt=Date.now();const add=c.peakAt?Math.floor(Math.random()*4):Math.round((20+Math.random()*30)*(1+(c.subs||0)/500));let left=add;if(!add)return;const step=()=>{const k=Math.min(left,Math.max(2,Math.ceil(add/12))+Math.floor(Math.random()*4));c.subs=(c.subs||0)+k;c.subGrow=(c.subGrow||0)+k;left-=k;save();if(T.openChat===c.id)updateHeadStatus();if(left>0)setTimeout(step,250+Math.random()*300);else pubSyncMeta(c,true)};setTimeout(step,300)}}
   if(m.status==='sent'&&c.type==='channel'&&c.owner&&c.public)pubPost(c,m);
   else if(m.status==='sent'&&c.type==='channel'&&c.owner)try{pushForChannelPost(c,m)}catch(_){}
+  if(m.status==='sent'&&c.chanChat){ccOnOwner(c,m);return}
   if(m.status==='sent')afterSent(c);
 }
 function afterSent(c){
@@ -1593,7 +1673,7 @@ function renderMessages(jump){
     const next=ms[i+1];const lastOfRun=!next||next.from!==m.from||next.sys;
     const U=S.users[m.from];
     const avh=showAv?(lastOfRun?avHTML({name:U?.name,color:U?.color,emoji:U?.emoji,img:U?.avatar},32,'mav'):'<div style="width:32px;flex-shrink:0"></div>'):'';
-    const who=(c.type==='group'&&!isOut)?`<div class="who" style="color:${U?.color}">${esc(U?.name||'')}${U?.bot?'<span class="btag">бот</span>':''}</div>`:(isPost?`<div class="who" style="color:${c.color}">${esc(c.title)}</div>`:'');
+    const who=(c.type==='group'&&!isOut)?`<div class="who" style="color:${U?.color}">${esc(U?.name||'')}</div>`:(isPost?`<div class="who" style="color:${c.color}">${esc(c.title)}</div>`:'');
     const fwd=m.fwd?`<div class="fwd">Переслано от <b>${esc(m.fwd)}</b></div>`:'';
     let bub;
     if(m.poll)bub=`<div class="bubble pollb ${isPost?'post':''}">${who}${pollHTML(m)}${meta}${reacts}</div>`;
