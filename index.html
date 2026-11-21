@@ -1276,6 +1276,7 @@ function headStatus(c){
   const ty=T.typing[c.id];
   if(ty)return {t:`${c.type==='group'?esc(S.users[ty].name.split(' ')[0])+' ':''}${actHTML(c.id)}`,blue:true};
   if(c.type==='private'){const u=S.users[c.user];if(u.blocked)return {t:'заблокирован(а)'};return {t:statusText(u),blue:u.online}}
+  if(c.ccChan&&c.cc){const n=sccCount(c),cl=sccClosedAt(sccCfg(c),Date.now());return {t:cl?`чат закрыт до ${hhmm(cl)}`:`${fmtK(n)} ${plural(n>=1000?5:n,'участник','участника','участников')}`}}
   if(c.chanChat){const n=ccCount(c),cl=ccClosed(c);return {t:cl?`чат закрыт до ${hhmm(cl.until)}`:`${fmtK(n)} ${plural(n>=1000?5:n,'участник','участника','участников')}`}}
   if(c.type==='group'){const on=c.members.filter(m=>S.users[m]?.online).length;return {t:`${c.members.length+1} ${plural(c.members.length+1,'участник','участника','участников')}${on?`, ${on} в сети`:''}`}}
   if(NOBOTS&&(c.feed||c.news))return {t:c.subscribed?'вы подписаны':'канал'};
@@ -1295,7 +1296,7 @@ function renderChatHead(){
 function updateHeadStatus(){const c=S.chats[T.openChat];if(!c)return;const el=$('#chatHead .s');if(!el)return;const st=headStatus(c);if(el.innerHTML!==st.t){el.innerHTML=st.t;el.classList.toggle('blue',!!st.blue)}}
 function openProfile(){
   const c=S.chats[T.openChat];if(!c)return;
-  if(c.type==='private')openUserProfile(c.user);else if(c.chanChat)openChanChatInfo(c);else openGroupProfile(c);
+  if(c.type==='private')openUserProfile(c.user);else if(c.ccChan&&c.cc)openSccInfo(c);else if(c.chanChat)openChanChatInfo(c);else openGroupProfile(c);
 }
 function askClear(c){
   const who=c.type==='private'?` с ${S.users[c.user].name.split(' ')[0]}`:'';
@@ -1353,6 +1354,7 @@ function openGroupProfile(c){
    ${extraRows(c)}
    <div class="grp">
      ${REAL&&((c.type==='channel'&&c.owner)||(c.type==='group'&&c.remote&&c.admin))?`<div class="r" data-a="privacy"><span class="ico" style="background:${c.public?'#34c759':'#8e8e93'}">${c.public?'🌍':'🔒'}</span>${c.type==='group'?'Тип группы':'Тип канала'}<span class="v">${c.public?'Публичный':'Приватный'}</span></div>`:''}
+     ${c.type==='channel'&&!c.owner&&c.chatRid?`<div class="r" data-a="jchat"><span class="ico" style="background:#34c759">💬</span>Перейти в чат канала</div>`:''}
      ${c.type==='channel'&&c.owner?((c.subs||0)>=CHAT_MIN?`<div class="r" data-a="cchat"><span class="ico" style="background:#34c759">💬</span>Чат канала<span class="v">${chanChatOf(c)?'Открыть':'Создать'}</span></div>`:`<div class="r dis" style="cursor:default"><span class="ico" style="background:#34c759">💬</span><div class="st-b"><div>Чат канала</div><div class="sm">откроется на ${fmtK(CHAT_MIN)} подписчиках · сейчас ${fmtK(c.subs||0)}</div></div></div>`):''}
      ${c.type==='channel'&&c.owner?`<div class="r" data-a="edit"><span class="ico" style="background:#34c759">✏️</span>Изменить канал</div>`:''}
      <div class="r ${has?'':'dis'}" data-a="export"><span class="ico" style="background:#5856d6">📤</span>Экспорт чата</div>
@@ -1377,6 +1379,7 @@ function openGroupProfile(c){
       if(a==='lock'){closePopups();setTimeout(()=>lockFlow(c),300)}
       if(a==='privacy'){closePopups();setTimeout(()=>openPrivacy(c),340)}
       if(a==='cchat')openChanChat(c);
+      if(a==='jchat')sccJoin(c);
       if(a==='edit')editChannel(c);
       if(a==='leave'){closePopups();setTimeout(()=>{if(c.pubRid){pubSubscribed(c,false);unwatchPub(c)}c.subscribed=false;if(NOBOTS)c.subs=0;else c.subs=Math.max(0,c.subs-1);save();musicOnClose();closeChat();renderMain();toast('Вы отписались от канала')},300)}
       if(a==='addm')openAddMembers(c);
@@ -1393,11 +1396,12 @@ function editChannel(c){
 }
 function renderChatBottom(){
   const c=S.chats[T.openChat];const b=$('#chatBottom');
+  if(c.ccChan&&c.cc&&!c.admin){const cfg=sccCfg(c);const cl=sccClosedAt(cfg,Date.now());if(cl||!cfg.perm.text){b.innerHTML=`<div class="mutebar"><span style="color:#8e8e93;font-size:15px">${cl?'Чат закрыт до '+hhmm(cl):'Писать могут только администраторы'}</span></div>`;$('#panel').classList.remove('open');clearTimeout(c._cbT);if(cl)c._cbT=setTimeout(()=>{if(T.openChat===c.id)renderChatBottom()},Math.min(cl-Date.now()+500,3600e3));return}}
   if(c.type==='private'&&S.users[c.user].blocked){
     b.innerHTML=`<div class="mutebar"><button id="unblk" style="color:#ff3b30">Разблокировать</button></div>`;$('#unblk').onclick=()=>toggleBlock(c.user);$('#panel').classList.remove('open');return}
   if(c.type==='channel'&&!c.owner){
     if(!c.subscribed){b.innerHTML=`<div class="mutebar"><button id="subBtn" style="font-weight:600">Подписаться</button></div>`;$('#subBtn').onclick=()=>subscribe(c);}
-    else{b.innerHTML=`<div class="mutebar${c.feed&&!NOCHAT?' two':''}">${c.feed&&!NOCHAT?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
+    else{const jc=!!c.chatRid;b.innerHTML=`<div class="mutebar${(c.feed&&!NOCHAT)||jc?' two':''}">${jc?'<button id="jcBtn">💬 Чат канала</button>':''}${c.feed&&!NOCHAT&&!jc?'<button id="discBtn">💬 Чат канала</button>':''}<button id="muteBtn">${c.muted?'Вкл. звук':'Выкл. звук'}</button></div>`;$('#discBtn')?.addEventListener('click',()=>openDiscussion(c.feed));$('#jcBtn')?.addEventListener('click',()=>sccJoin(c));$('#muteBtn').onclick=()=>{c.muted=!c.muted;save();renderChatBottom();renderChatHead();toast(c.muted?'Уведомления выключены':'Уведомления включены')}}
     $('#panel').classList.remove('open');return;
   }
   if(c.type==='channel'&&c.owner&&postWait(c)&&Date.now()-(c.lastPost||0)<(c.lastWait||postWait(c))){
@@ -1518,10 +1522,11 @@ function ccOnOwner(c,m){if(!c||!c.chanChat||!c.v2)return;const tx=(m.text||'').t
   if(/правил/.test(tx))ccBurst(c,CCL.rules,3+Math.floor(Math.random()*3));
   else if(c.ownerMsgs<=3||/всем привет|привет всем|всем ку|hello|хай всем/.test(tx))ccBurst(c,CCL.admin1,3+Math.floor(Math.random()*4));
   else if(Math.random()<.7)ccBurst(c,CCL.admin,1+Math.floor(Math.random()*3))}
-function chanChatOf(ch){return S.chats['cc_'+ch.id]}
+function chanChatOf(ch){return (ch.chatRid&&S.chats['r_'+ch.chatRid])||S.chats['cc_'+ch.id]}
 function openChanChat(ch){
   if((ch.subs||0)<CHAT_MIN){toast(`Чат канала откроется на ${fmtK(CHAT_MIN)} подписчиках · сейчас ${fmtK(ch.subs||0)}`);return}
-  let c=chanChatOf(ch);if(c){closePopups();setTimeout(()=>openChat(c.id),300);return}
+  let c=chanChatOf(ch);if(c&&(!REAL||c.remote)){closePopups();setTimeout(()=>openChat(c.id),300);return}
+  if(REAL&&RT.uid){actionSheet(c?'Сделать чат общим? Подписчики с других аккаунтов смогут в него зайти':'Создать чат канала? Вы уверены? Подписчики начнут заходить и общаться',[{label:c?'Сделать общим':'Создать чат',fn:async()=>{try{const id=await sccCreate(ch);closePopups();setTimeout(()=>openChat(id),400)}catch(e){toast(fbErr(e))}}}]);return}
   actionSheet('Создать чат канала? Вы уверены? Подписчики начнут заходить и общаться',[{label:'Создать чат',fn:()=>{
     c=S.chats['cc_'+ch.id]={id:'cc_'+ch.id,type:'group',chanChat:ch.id,title:'Чат · '+ch.title,color:ch.color,avatar:ch.avatar,members:[],admin:true,v2:1,created:now(),joinN:0,kicked:[],nextJoin:now()+15000,perm:{text:1,photo:1,emoji:1,sticker:1},
       messages:[{id:uid(),sys:true,text:'Вы создали чат канала',time:now()}],muted:false};save();closePopups();setTimeout(()=>openChat(c.id),300)}}])}
@@ -1547,6 +1552,121 @@ function openChanChatInfo(c){const ch=S.chats[c.chanChat];const cl=ccClosed(c);c
    sh.querySelector('#ccUnlock')?.addEventListener('click',()=>{c.closedUntil=0;save();ccChatTick(c);closePopups()});
    sh.querySelectorAll('.cc-mem .r[data-i]').forEach(r=>r.onclick=()=>{const i=+r.dataset.i;actionSheet(`Удалить ${ccName(i)} из чата?`,[{label:'Удалить из чата',red:true,fn:()=>{ccKick(c,i);setTimeout(()=>openChanChatInfo(c),350)}}])});
    sh.querySelector('#ccDel').onclick=()=>actionSheet('Удалить чат канала со всеми сообщениями?',[{label:'Удалить чат',red:true,fn:()=>{delete S.chats[c.id];save();closePopups();if(T.openChat===c.id)closeChat?.();renderListIfVisible()}}])})}
+
+/* ===== shared channel chat: a real group on the server; the crowd of fans is computed the same way on every phone ===== */
+function sccCfg(c){return Object.assign({created:0,perm:{text:1,photo:1,emoji:1,sticker:1},permLog:[],kicked:{},sched:null,closeLog:[]},c.cc||{})}
+function sccChan(c){const id=c.ccChan;if(!id)return null;return S.chats[id]||S.chats[pubLocalId(id)]||Object.values(S.chats).find(x=>x.pubRid===id)||null}
+function sccPermAt(cfg,t){const L=cfg.permLog||[];if(!L.length)return cfg.perm;let p={text:1,photo:1,emoji:1,sticker:1};for(const e of L){if(e.t<=t)p=e.perm;else break}return p}
+function sccClosedAt(cfg,t){for(const [a,b] of cfg.closeLog||[])if(t>=a&&t<b)return b;const sc=cfg.sched;if(!sc||!sc.on||t<(sc.since||0))return 0;const x=hm2min(sc.close),y=hm2min(sc.open);if(x==null||y==null||x===y)return 0;
+  const d=new Date(t),m=d.getHours()*60+d.getMinutes();const inside=x<y?(m>=x&&m<y):(m>=x||m<y);if(!inside)return 0;const u=new Date(t);u.setHours(Math.floor(y/60),y%60,0,0);if(u.getTime()<=t)u.setDate(u.getDate()+1);return u.getTime()}
+/* join times are fixed by the chat id */
+const SCCJ={};
+function sccJoins(c,t){const cfg=sccCfg(c);let J=SCCJ[c.rid];if(!J||J.created!==cfg.created)J=SCCJ[c.rid]={created:cfg.created,times:[]};
+  let last=J.times.length?J.times[J.times.length-1]:cfg.created;while(J.times.length<CC_MAX){const nx=last+ccGap({id:c.rid},J.times.length)*1000;if(nx>t)break;J.times.push(nx);last=nx}return J.times}
+function sccJoinedAt(c,t){const J=sccJoins(c,t);let lo=0,hi=J.length;while(lo<hi){const m=(lo+hi)>>1;if(J[m]<=t)lo=m+1;else hi=m}return lo}
+function sccKickedAt(cfg,i,t){const k=cfg.kicked&&cfg.kicked[i];return k&&k<=t}
+function sccCount(c){const cfg=sccCfg(c);const n=sccJoinedAt(c,Date.now());return Math.max(0,n-Object.keys(cfg.kicked||{}).length)+(c.members||[]).length+1}
+function sccLine(arr,seed,cfg,t){let s=arr[hash32(seed)%arr.length];if(!sccPermAt(cfg,t).emoji)s=s.replace(/\p{Extended_Pictographic}️?/gu,'').trim()||'ахах';return s}
+function sccSpeaker(c,cfg,t,seed){const n=sccJoinedAt(c,t);if(!n)return -1;for(let k=0;k<6;k++){const i=n-1-(hash32(seed+'#'+k)%Math.min(n,60));if(!sccKickedAt(cfg,i,t))return i}return -1}
+/* all crowd events between `from` and `to` */
+function sccEvents(c,from,to){const cfg=sccCfg(c);if(!cfg.created)return [];const ev=[];const id=c.rid;from=Math.max(from,cfg.created);
+  const add=(key,t,o)=>{if(t<from||t>to)return;ev.push({id:'s_'+key,time:t,status:'read',reactions:{},sim:true,...o})};
+  const say=(key,t,i,lines,seed)=>{if(i<0||sccClosedAt(cfg,t)||!sccPermAt(cfg,t).text||sccKickedAt(cfg,i,t)||sccJoinedAt(c,t)<=i)return;add(key,t,{from:ccUid(i),text:sccLine(lines,seed,cfg,t)})};
+  /* joins */
+  const J=sccJoins(c,to);for(let k=0;k<J.length;k++){const t=J[k];if(t>to)break;if(t<from-60000)continue;add('j'+k,t,{sys:true,text:`${ccName(k)} вступил(а) в чат`});
+    if(k<15)say('jr'+k,t+3000+hash32(id+'jr'+k)%5000,k,CCL.join1,id+'j1'+k);else if(hash32(id+'jg'+k)%100<35)say('jr'+k,t+4000+hash32(id+'jr'+k)%9000,k,CCL.join,id+'jg'+k)}
+  /* ordinary chatter */
+  const step=60000;for(let s0=Math.floor(from/step)*step;s0<=to;s0+=step){const m=Math.floor(s0/step);const n=Math.max(0,sccJoinedAt(c,s0)-Object.keys(cfg.kicked||{}).length);if(n<2)continue;
+    const per=Math.min(8,Math.max(1,Math.round(n/40)));for(let q=0;q<per;q++){const sd=id+'|'+m+'|'+q;if(hash32(sd+'p')%100>=Math.min(85,25+n/6))continue;const t=s0+hash32(sd+'t')%step;const i=sccSpeaker(c,cfg,t,sd);
+      if(sccPermAt(cfg,t).sticker&&hash32(sd+'st')%100<7){if(i>=0&&!sccClosedAt(cfg,t)&&sccPermAt(cfg,t).text&&!sccKickedAt(cfg,i,t))add('c'+m+'_'+q,t,{from:ccUid(i),text:'',sticker:`ax:${ASTK_PACKS[hash32(sd+'pk')%ASTK_PACKS.length].k}:${hash32(sd+'si')%10}`});continue}
+      say('c'+m+'_'+q,t,i,CCL.chat,sd+'x')}}
+  /* answers to real people (the admin and members) */
+  const real=(c.messages||[]).filter(m=>!m.sim&&!m.sys&&m.time>=from-120000&&m.time<=to);let ownerN=0;
+  const isAdm=m=>m.from==='me'?c.admin:(c.admins||[]).includes(m.from);(c.messages||[]).filter(m=>!m.sim&&!m.sys&&isAdm(m)).forEach(m=>{m._on=++ownerN});
+  real.forEach(m=>{const isAdmin=m.from==='me'?c.admin:(c.admins||[]).includes(m.from);const tx=(m.text||'').toLowerCase();let lines,n;
+    if(isAdmin){if(/правил/.test(tx)){lines=CCL.rules;n=3+hash32(m.id+'n')%3}else if((m._on||9)<=3||/всем привет|привет всем|всем ку|хай всем/.test(tx)){lines=CCL.admin1;n=3+hash32(m.id+'n')%4}else{lines=CCL.admin;n=hash32(m.id+'n')%3}}
+    else{const nm=(m.from==='me'?(S.me.name||''):(S.users[m.from]?.name||'')).split(' ')[0];lines=CCL.reply.map(x=>x.replace('{n}',nm));n=hash32(m.id+'n')%2}
+    for(let k=0;k<n;k++){const t=m.time+2500+k*2200+hash32(m.id+'d'+k)%2500;say('a'+m.id+'_'+k,t,sccSpeaker(c,cfg,t,m.id+k),lines,m.id+'l'+k)}});
+  /* new posts in the channel */
+  const ch=sccChan(c);if(ch)ch.messages.filter(p=>!p.sys&&p.time>=cfg.created&&p.time>=from-10*60000&&p.time<=to).forEach(p=>{const n=2+hash32(p.id+'pn')%4;const tt=(p.title||p.text||'').split('\n')[0].slice(0,40);
+    for(let k=0;k<n;k++){const t=p.time+8000+k*9000+hash32(p.id+'pd'+k)%8000;const i=sccSpeaker(c,cfg,t,p.id+'ps'+k);
+      if(k===1&&tt&&hash32(p.id+'q')%100<40){if(i>=0&&!sccClosedAt(cfg,t)&&sccPermAt(cfg,t).text)add('p'+p.id+'_'+k,t,{from:ccUid(i),text:`«${tt}» — ну это база`})}else say('p'+p.id+'_'+k,t,i,CCL.post,p.id+'pl'+k)}});
+  /* kicks */
+  Object.entries(cfg.kicked||{}).forEach(([i,t])=>{i=+i;const n=ccName(i);add('k'+i,t,{sys:true,text:`${n} удалён(а) из чата`});for(let k=0;k<1+hash32(id+'kn'+i)%3;k++){const tt=t+2500+k*2500;say('kr'+i+'_'+k,tt,sccSpeaker(c,cfg,tt,'k'+i+k),CCL.kick.map(x=>x.replace('{n}',n)),id+'kl'+i+k)}});
+  /* permissions */
+  (cfg.permLog||[]).forEach((e,j)=>{if(!e.k)return;add('pm'+j,e.t,{sys:true,text:'Администратор '+(e.perm[e.k]?'разрешил':'запретил')+': '+({text:'отправлять сообщения',photo:'отправлять фото',emoji:'смайлики',sticker:'стикеры'})[e.k]})});
+  /* closing and opening */
+  const opens=[];(cfg.closeLog||[]).forEach(([a,b],j)=>{add('cl'+j,a,{sys:true,text:`Чат закрыт до ${hhmm(b)}`});opens.push(['o'+j,b])});
+  if(cfg.sched&&cfg.sched.on){const x=hm2min(cfg.sched.close),y=hm2min(cfg.sched.open);if(x!=null&&y!=null&&x!==y){const d0=new Date(Math.max(from,cfg.sched.since||0));d0.setHours(0,0,0,0);
+    for(let d=d0.getTime()-DAY;d<=to+DAY;d+=DAY){const a=d+x*60000;let b=d+y*60000;if(b<=a)b+=DAY;if(a<(cfg.sched.since||0))continue;add('sc'+d,a,{sys:true,text:`Чат закрыт до ${hhmm(b)}`});opens.push(['so'+d,b])}}}
+  opens.forEach(([k,b])=>{add(k,b,{sys:true,text:'Чат снова открыт'});for(let q=0;q<2+hash32(id+k)%3;q++){const t=b+3000+q*3000+hash32(id+k+q)%3000;say(k+'_'+q,t,sccSpeaker(c,cfg,t,k+q),CCL.open,id+k+'l'+q)}});
+  return ev.sort((a,b)=>a.time-b.time)}
+/* put the crowd's messages into the chat (last 3 days, at most 300) */
+function sccInject(c){if(!c||!c.ccChan||!c.cc)return false;const t=Date.now();const keep=new Map((c.messages||[]).filter(m=>m.sim).map(m=>[m.id,m]));
+  let ev=sccEvents(c,t-3*DAY,t);if(ev.length>300)ev=ev.slice(-300);ev.forEach(e=>{const o=keep.get(e.id);if(o&&o.reactions)e.reactions=o.reactions});
+  const real=(c.messages||[]).filter(m=>!m.sim);const all=real.concat(ev).sort((a,b)=>a.time-b.time);const sig=all.length+':'+(all[all.length-1]||{}).id;
+  c.messages=all;if(sig===c._simSig)return false;const grew=c._simSig&&ev.length&&!keep.has(ev[ev.length-1].id);c._simSig=sig;if(grew&&T.openChat!==c.id)c.unread=(c.unread||0)+1;return true}
+function sccTick(){const t=Date.now();Object.values(S.chats).filter(c=>c.ccChan&&c.cc&&c.remote).forEach(c=>{
+  if(sccInject(c)){if(T.openChat===c.id){renderMessages();try{updateHeadStatus();renderChatBottom()}catch(_){}}renderListIfVisible()}
+  if(T.openChat===c.id){const nx=sccEvents(c,t,t+1800).find(e=>e.from&&!e.sys);if(nx&&!T.typing[c.id]){T.typing[c.id]=nx.from;updateTyping(c);setTimeout(()=>{if(T.typing[c.id]===nx.from){delete T.typing[c.id];updateTyping(c)}},1900)}}})}
+setInterval(sccTick,1000);
+/* settings changes are written into the chat itself so every member gets them */
+async function sccSave(c,patch){const cfg=Object.assign(sccCfg(c),patch);c.cc=cfg;c._simSig='';sccInject(c);if(T.openChat===c.id){renderMessages();renderChatBottom();updateHeadStatus()}
+  try{const F=FBX();await F.updateDoc(F.doc(F.db,'chats',c.rid),{cc:cfg})}catch(e){toast(fbErr(e))}}
+/* joining: directly if the database allows it, otherwise the admin's app adds you */
+async function sccJoin(ch){const rid=ch.chatRid;if(!rid){toast('У этого канала пока нет чата');return}
+  const have=S.chats['r_'+rid];if(have){closePopups();setTimeout(()=>openChat(have.id),250);return}
+  const F=FBX();try{await F.updateDoc(F.doc(F.db,'chats',rid),{members:F.arrayUnion(RT.uid)});toast('Вы вошли в чат канала');RT.wantChat=rid;return}catch(_){}
+  try{await F.updateDoc(F.doc(F.db,'users',RT.uid),{ccJoin:F.arrayUnion(rid)});RT.wantChat=rid;S.ccWait=S.ccWait||{};S.ccWait[rid]=Date.now();save();
+    toast('Заявка отправлена — вы войдёте в чат, как только администратор будет в сети')}catch(e){toast(fbErr(e))}}
+/* admin's phone: let in everyone who asked */
+async function sccApprove(){if(!REAL||!RT.uid)return;const mine=Object.values(S.chats).filter(c=>c.ccChan&&c.remote&&c.admin);if(!mine.length)return;const F=FBX();
+  for(const c of mine){try{const q=await F.getDocs(F.query(F.collection(F.db,'users'),F.where('ccJoin','array-contains',c.rid),F.limit(50)));
+    const ids=q.docs.map(d=>d.id).filter(u=>u!==RT.uid&&!(c.members||[]).includes(u)&&!((sccCfg(c).banned||{})[u]));if(ids.length)await F.updateDoc(F.doc(F.db,'chats',c.rid),{members:F.arrayUnion(...ids)})}catch(_){}}}
+setInterval(sccApprove,30000);setTimeout(sccApprove,6000);
+/* when the chat appears on this phone after joining */
+setInterval(()=>{const w=RT.wantChat;if(!w)return;const c=S.chats['r_'+w];if(!c)return;RT.wantChat=null;if(S.ccWait)delete S.ccWait[w];save();
+  try{const F=FBX();F.updateDoc(F.doc(F.db,'users',RT.uid),{ccJoin:F.arrayRemove(w)}).catch(()=>{})}catch(_){}toast('Вы в чате канала');openChat(c.id)},1500);
+setTimeout(()=>{if(S.ccWait){const k=Object.keys(S.ccWait)[0];if(k&&!S.chats['r_'+k])RT.wantChat=k}},3000);
+/* the admin creates the chat */
+async function sccCreate(ch){const F=FBX();const t=Date.now();
+  const cfg={created:t,perm:{text:1,photo:1,emoji:1,sticker:1},permLog:[],kicked:{},sched:null,closeLog:[]};
+  const ref=await F.addDoc(F.collection(F.db,'chats'),{type:'group',title:'Чат · '+ch.title,avatar:smallAv(ch.avatar)||null,color:ch.color||'#3e88f7',members:[RT.uid],admins:[RT.uid],public:true,chanOf:ch.id,cc:cfg,created:t,updatedAt:t,reads:{},typing:{},lastMsg:{text:'Чат канала создан',from:RT.uid,time:t}});
+  ch.chatRid=ref.id;save();try{if(ch.public)pubSyncMeta(ch,true)}catch(_){}
+  applyChatDoc(ref.id,{type:'group',title:'Чат · '+ch.title,members:[RT.uid],admins:[RT.uid],chanOf:ch.id,cc:cfg,reads:{},typing:{}});
+  const old=S.chats['cc_'+ch.id];if(old)delete S.chats['cc_'+ch.id];save();return 'r_'+ref.id}
+function openSccInfo(c){const cfg=sccCfg(c);const adm=c.admin;const cl=sccClosedAt(cfg,Date.now());const p=cfg.perm;const sc=cfg.sched||{on:0,close:'23:00',open:'08:00'};
+  const n=sccJoinedAt(c,Date.now());const sims=[];for(let i=n-1;i>=0&&sims.length<60;i--)if(!(cfg.kicked||{})[i])sims.push(i);
+  const real=(c.members||[]).map(u=>({u,name:S.users[u]?.name||'Участник',color:S.users[u]?.color}));
+  openSheet('Чат канала',`<div class="pf-top">${avHTML({name:c.title,color:c.color,img:c.avatar},84)}<h2>${esc(c.title)}</h2><div class="pf-st">${fmtK(sccCount(c))} ${plural(sccCount(c)>=1000?5:sccCount(c),'участник','участника','участников')}${cl?' · закрыт до '+hhmm(cl):''}</div></div>
+   ${adm?`<div class="sec-h">Разрешения участникам</div><div class="grp">${[['text','Отправлять сообщения'],['photo','Отправлять фото'],['emoji','Смайлики'],['sticker','Стикеры']].map(([k,l])=>`<div class="r cc-p" data-k="${k}">${l}<span class="sw ${p[k]?'on':''}"></span></div>`).join('')}</div>
+   <div class="sec-h">Время работы чата</div><div class="grp">
+    <div class="r" id="ccSchOn">Закрывать на ночь<span class="sw ${sc.on?'on':''}"></span></div>
+    <div class="r">Закрывается в<input type="time" id="ccClose" value="${esc(sc.close)}" style="flex:0 0 auto;margin-left:auto"></div>
+    <div class="r">Открывается в<input type="time" id="ccOpen" value="${esc(sc.open)}" style="flex:0 0 auto;margin-left:auto"></div></div>
+   <div class="grp"><div class="r">Закрыть до<input type="datetime-local" id="ccUntil" style="flex:0 0 auto;margin-left:auto;color-scheme:dark"></div>
+    <div class="r" id="ccLock" style="color:var(--ac)">Закрыть чат до этого времени</div>${cl?'<div class="r" id="ccUnlock" style="color:#34c759">Открыть чат сейчас</div>':''}</div>`:''}
+   <div class="sec-h">Участники${adm?' · нажмите, чтобы удалить':''}</div><div class="grp cc-mem">
+    ${real.map(x=>`<div class="r" data-u="${esc(x.u)}">${avHTML({name:x.name,color:x.color},34)}<span>${esc(x.name)}</span>${(c.admins||[]).includes(x.u)?'<span class="v">админ</span>':''}</div>`).join('')}
+    ${sims.map(i=>{const u=S.users[ccUid(i)];return `<div class="r" data-i="${i}">${avHTML({name:u.name,color:u.color},34)}<span>${esc(u.name)}</span></div>`}).join('')||(real.length?'':'<div class="r dis">Пока никого — участники скоро начнут заходить</div>')}</div>
+   ${adm?'<div class="grp"><div class="r red" id="ccDel">Удалить чат</div></div>':'<div class="grp"><div class="r red" id="ccLeave">Выйти из чата</div></div>'}`,sh=>{
+   if(adm){
+    sh.querySelectorAll('.cc-p').forEach(r=>r.onclick=()=>{const k=r.dataset.k;const cur=sccCfg(c);const before={...cur.perm};const perm={...cur.perm,[k]:cur.perm[k]?0:1};r.querySelector('.sw').classList.toggle('on',!!perm[k]);
+      const log=(cur.permLog||[]).slice(-30);if(!log.length)log.push({t:cur.created,perm:before});log.push({t:Date.now(),perm,k});sccSave(c,{perm,permLog:log})});
+    const saveSch=on=>{const cur=sccCfg(c);sccSave(c,{sched:{on:on?1:0,close:sh.querySelector('#ccClose').value||'23:00',open:sh.querySelector('#ccOpen').value||'08:00',since:on?(cur.sched&&cur.sched.on?cur.sched.since:Date.now()):0}})};
+    sh.querySelector('#ccSchOn').onclick=()=>{const sw=sh.querySelector('#ccSchOn .sw');sw.classList.toggle('on');const on=sw.classList.contains('on');saveSch(on);toast(on?`Чат будет закрыт с ${sh.querySelector('#ccClose').value} до ${sh.querySelector('#ccOpen').value}`:'Ночное закрытие выключено')};
+    sh.querySelector('#ccClose').onchange=()=>saveSch(sh.querySelector('#ccSchOn .sw').classList.contains('on'));sh.querySelector('#ccOpen').onchange=sh.querySelector('#ccClose').onchange;
+    sh.querySelector('#ccLock').onclick=()=>{const v=sh.querySelector('#ccUntil').value;const t=v?new Date(v).getTime():0;if(!t||t<=Date.now()){toast('Выберите дату и время в будущем');return}const cur=sccCfg(c);sccSave(c,{closeLog:(cur.closeLog||[]).slice(-30).concat([[Date.now(),t]])});closePopups();toast('Чат закрыт до '+dayLabel(t).toLowerCase()+' '+hhmm(t))};
+    sh.querySelector('#ccUnlock')?.addEventListener('click',()=>{const cur=sccCfg(c);const now2=Date.now();const log=(cur.closeLog||[]).map(([a,b])=>now2>=a&&now2<b?[a,now2]:[a,b]);let sched=cur.sched;if(sched&&sched.on&&sccClosedAt({...cur,closeLog:log},now2))sched={...sched,on:0};sccSave(c,{closeLog:log,sched});closePopups()});
+    sh.querySelectorAll('.cc-mem .r[data-i]').forEach(r=>r.onclick=()=>{const i=+r.dataset.i;actionSheet(`Удалить ${ccName(i)} из чата?`,[{label:'Удалить из чата',red:true,fn:()=>{const cur=sccCfg(c);sccSave(c,{kicked:{...cur.kicked,[i]:Date.now()}});setTimeout(()=>openSccInfo(c),400)}}])});
+    sh.querySelectorAll('.cc-mem .r[data-u]').forEach(r=>{const u=r.dataset.u;if((c.admins||[]).includes(u))return;r.onclick=()=>actionSheet(`Удалить ${S.users[u]?.name||'участника'} из чата?`,[{label:'Удалить из чата',red:true,fn:async()=>{const F=FBX();const cur=sccCfg(c);try{await F.updateDoc(F.doc(F.db,'chats',c.rid),{members:F.arrayRemove(u),cc:{...cur,banned:{...(cur.banned||{}),[u]:Date.now()}}});F.addDoc(F.collection(F.db,'chats',c.rid,'messages'),{from:RT.uid,sys:true,text:`${S.users[u]?.name||'Участник'} удалён(а) из чата`,time:Date.now()}).catch(()=>{});closePopups()}catch(e){toast(fbErr(e))}}}])});
+    sh.querySelector('#ccDel').onclick=()=>actionSheet('Удалить чат канала со всеми сообщениями?',[{label:'Удалить чат',red:true,fn:async()=>{const ch=sccChan(c);try{const F=FBX();await F.deleteDoc(F.doc(F.db,'chats',c.rid))}catch(_){}if(ch){delete ch.chatRid;try{if(ch.public)pubSyncMeta(ch,true)}catch(_){}}delete S.chats[c.id];save();closePopups();if(T.openChat===c.id)closeChat();renderListIfVisible()}}]);
+   }else sh.querySelector('#ccLeave').onclick=()=>actionSheet('Выйти из чата канала?',[{label:'Выйти',red:true,fn:async()=>{try{const F=FBX();await F.updateDoc(F.doc(F.db,'chats',c.rid),{members:F.arrayRemove(RT.uid)})}catch(_){}delete S.chats[c.id];save();closePopups();if(T.openChat===c.id)closeChat();renderListIfVisible()}}])})}
+/* limits for real members */
+function sccGate(c,o){if(!c||!c.ccChan||!c.cc||c.admin)return true;const cfg=sccCfg(c);const t=Date.now();const cl=sccClosedAt(cfg,t);if(cl){toast('Чат закрыт до '+hhmm(cl));return false}const p=cfg.perm;
+  if(!p.text){toast('Писать в чате сейчас нельзя');return false}if(o.img&&!p.photo){toast('Фото в этом чате запрещены');return false}if(o.sticker&&!p.sticker){toast('Стикеры в этом чате запрещены');return false}
+  if(!p.emoji&&/\p{Extended_Pictographic}/u.test(o.text||'')){toast('Смайлики в этом чате запрещены');return false}return true}
+
 setInterval(fanTick,2600);
 
 function fade(c){if(!c.peakAt)return 1;const d=(Date.now()-c.peakAt)/DAY;return Math.max(.2,1-d*.06)}
@@ -1556,11 +1676,12 @@ function postGate(c){if(!c||c.type!=='channel'||!c.owner)return true;const w=pos
 function sendMessage(o,when){
   {const cc=S.chats[T.openChat];if(cc&&cc.type==='channel'&&cc.owner&&!when&&!postGate(cc))return false}
   const c=S.chats[T.openChat];if(!c)return;
+  if(c.ccChan&&!sccGate(c,o))return false;
   if(c.remote){remoteSend(c,o,when);return}
   const m={id:uid(),from:'me',text:o.text||'',time:now(),status:'sent',reactions:{}};
   if(o.spoiler)m.spoiler=true;if(o.img)m.img=o.img;if(o.voice)m.voice=o.voice;if(o.poll)m.poll=o.poll;if(o.sticker)m.sticker=o.sticker;if(o.fwd)m.fwd=o.fwd;if(o.video)m.video=o.video;if(S.ttl&&S.ttl[c.id]&&c.type!=='channel')m.exp=now()+S.ttl[c.id];
   if(T.reply){m.reply=T.reply;clearReply()}
-  if(c.type==='channel'){m.from=c.id;m.views=1}
+  if(c.type==='channel'){m.from=c.id;m.views=1;m.aud=c.subs||0}
   if(typeof when==='number'){m.status='scheduled';m.schedAt=when}
   else if(when==='online'){m.status='waiting'}
   c.messages.push(m);T.justSent=m.id;save();renderMessages();
@@ -2958,12 +3079,12 @@ function roundHTML(m){const v=m.video;return `<div class="vid round" data-vf="${
 const PUB={unsub:{},ownUnsub:{},lastSync:{}};
 function pubReady(){return REAL&&RT.uid&&window.FB&&window.FB.db}
 function smallAv(src){return src&&src.length<120000?src:null}
-function postPayload(m){const d={text:m.text||'',time:m.time||Date.now(),views:m.views||1,reacts:Object.fromEntries(Object.entries(m.reactions||{}).map(([e,v])=>[e,v.n||0]))};if(m.poll)d.votes=m.poll.opts.map(o=>o.v||0);if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
+function postPayload(m){const d={text:m.text||'',time:m.time||Date.now(),views:m.views||1,aud:m.aud||0,reacts:Object.fromEntries(Object.entries(m.reactions||{}).map(([e,v])=>[e,v.n||0]))};if(m.poll)d.votes=m.poll.opts.map(o=>o.v||0);if(m.spoiler)d.spoiler=true;if(m.img&&m.img.length<700000)d.img=m.img;if(m.title)d.title=m.title;if(m.poll)d.poll={q:m.poll.q,opts:m.poll.opts.map(o=>o.t)};if(m.sticker&&!String(m.sticker).startsWith('img:'))d.sticker=m.sticker;if(m.voice&&m.voice.src&&m.voice.src.length<700000)d.voice={src:m.voice.src,dur:m.voice.dur,wave:m.voice.wave};return d}
 
 /* ---- when the database rules are old: store statuses and public channels in the user's own profile (allowed by the old rules) ---- */
 function legacy(){return !!RT.oldRules}
 function legacyChEntry(c){const posts=c.messages.filter(m=>!m.sys).slice(-25).map(m=>{const p=postPayload(m);p.id=m.id;if(p.img&&p.img.length>110000)delete p.img;if(p.voice&&p.voice.src.length>150000)delete p.voice;return p});
-  let e={title:c.title,titleLower:(c.title||'').toLowerCase(),kw:kwOf(c.title),desc:c.desc||'',avatar:c.avatar&&c.avatar.length<60000?c.avatar:null,color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,theme:(S.themeAll&&S.themeAll[c.id])||'def',updatedAt:Date.now(),posts};
+  let e={title:c.title,titleLower:(c.title||'').toLowerCase(),kw:kwOf(c.title),desc:c.desc||'',avatar:c.avatar&&c.avatar.length<60000?c.avatar:null,color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,chat:c.chatRid||null,theme:(S.themeAll&&S.themeAll[c.id])||'def',updatedAt:Date.now(),posts};
   while(JSON.stringify(e).length>420000&&e.posts.length>1)e.posts=e.posts.slice(1);return e}
 async function legacyWriteChannels(){if(!RT.uid)return false;const F=FBX();const mine=Object.values(S.chats).filter(c=>c.owner&&c.type==='channel'&&c.public);
   const pubch={};let kw=[];mine.forEach(c=>{pubch[c.id]=legacyChEntry(c);kw=kw.concat(pubch[c.id].kw)});
@@ -2977,7 +3098,7 @@ async function legacySearch(q){const F=FBX();const lo=q.toLowerCase();const norm
   return [...out.values()]}
 
 function kwOf(t){const lo=(t||'').toLowerCase().trim();const words=[lo,...lo.split(/[^\p{L}\p{N}]+/u)].filter(Boolean);const out=new Set();words.forEach(w=>{for(let i=1;i<=Math.min(w.length,20);i++)out.add(w.slice(0,i))});return [...out].slice(0,200)}
-function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,created:c.created||now(),updatedAt:Date.now()}}
+function chDoc(c){return {kw:kwOf(c.title),theme:(S.themeAll&&S.themeAll[c.id])||'def',owner:RT.uid,title:c.title,titleLower:(c.title||'').toLowerCase(),desc:c.desc||'',avatar:smallAv(c.avatar),color:c.color||'#3e88f7',bots:c.subs||1,pg:(c.pgAt&&!c.peakAt)?c.pgAt:0,chat:c.chatRid||null,created:c.created||now(),updatedAt:Date.now()}}
 function publishChannel(c){if(legacy()){$('#rulesBar')?.remove();c.public=true;save();return legacyWriteChannels().then(ok=>{if(!ok){c.public=false;save()}return ok})}
   return publishChannel0(c)}
 async function publishChannel0(c){
@@ -3010,12 +3131,12 @@ function ensurePubChat(id,d){
   const L=pubLocalId(id);let c=S.chats[L];
   if(!c)c=S.chats[L]={id:L,type:'channel',pubRid:id,title:d.title,desc:d.desc,avatar:d.avatar,color:d.color,subs:(d.bots||0)+(d.real||0),subscribed:false,owner:false,muted:false,messages:[]};
   S.themeAll=S.themeAll||{};if(d.theme&&d.theme!=='def')S.themeAll[L]=d.theme;else delete S.themeAll[L];if(T.openChat===L)applyTheme(L);
-  if(c){c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;const b=(d.bots||0)+(d.real||0);c._pg=d.pg?{b,at:d.pg}:null;c.subs=Math.max(c.subscribed?1:0,d.pg?pgLive(id,b,d.pg):b)}
+  if(c){c.chatRid=d.chat||null;c.title=d.title;c.desc=d.desc;c.avatar=d.avatar;c.color=d.color;const b=(d.bots||0)+(d.real||0);c._pg=d.pg?{b,at:d.pg}:null;c.subs=Math.max(c.subscribed?1:0,d.pg?pgLive(id,b,d.pg):b)}
   return c;
 }
 function mapPost(c,doc,prev){
   const d=doc.data();const m={id:doc.id,from:c.id,text:d.text||'',time:d.time||Date.now(),status:'sent',reactions:prev?prev.reactions:{},views:prev?prev.views:0};
-  if(d.spoiler)m.spoiler=true;if(d.img)m.img=d.img;if(d.title)m.title=d.title;if(d.sticker)m.sticker=d.sticker;if(d.voice)m.voice={...d.voice,heard:prev&&prev.voice&&prev.voice.heard};
+  if(d.aud)m.aud=d.aud;if(d.spoiler)m.spoiler=true;if(d.img)m.img=d.img;if(d.title)m.title=d.title;if(d.sticker)m.sticker=d.sticker;if(d.voice)m.voice={...d.voice,heard:prev&&prev.voice&&prev.voice.heard};
   if(d.poll)m.poll=prev&&prev.poll&&prev.poll.q===d.poll.q?prev.poll:{q:d.poll.q,opts:d.poll.opts.map(t=>({t,v:0})),voted:-1};
   if(d.views){ // the channel owner's numbers win: every device shows the same
     m.views=Math.max(d.views,prev&&prev.views||0);const R={};Object.entries(d.reacts||{}).forEach(([e,n])=>{const mine=prev&&prev.reactions&&prev.reactions[e]&&prev.reactions[e].mine;R[e]={n:n+(mine?1:0),mine:!!mine}});
@@ -4141,6 +4262,19 @@ function passiveGrow(){const t=Date.now();let any=null;
 setInterval(passiveGrow,15000);setTimeout(passiveGrow,3000);
 /* bots react to fan posts; your own channels slowly gain subscribers and a few reactions (demo only) */
 function minViews(m){const r=Object.values(m.reactions||{}).reduce((x,v)=>x+(v.n||0),0);const p=m.poll?m.poll.opts.reduce((x,o)=>x+(o.v||0),0):0;return Math.max(r,p)+1}
+/* views and reactions of posts in people's own channels: computed from the post itself and the time,
+   so the owner and every subscriber see exactly the same numbers in the same order */
+const PS_E=['❤️','🔥','😂','👍','🎉','😍','😮','🤯'];
+function postStats(id,aud,time,t){const h=k=>hash32(id+'|'+k);aud=Math.max(0,+aud||0);const age=Math.max(0,(t||Date.now())-(time||0));
+  const V=Math.max(300+h('vb')%260,Math.floor(aud*(.55+(h('vk')%350)/1000)));const views=Math.max(1,Math.floor(V*(1-Math.exp(-age/(45*60000)))));
+  const R=Math.max(50+h('rb')%60,Math.floor(aud*.15));const rt=Math.floor(R*(1-Math.exp(-age/(60*60000))));
+  const n=4+h('n')%3;const pool=PS_E.slice();const em=[];for(let i=0;i<n;i++){const k=(i===0&&h('lv')%10<6)?0:h('e'+i)%pool.length;em.push(pool.splice(k,1)[0])}
+  const w=em.map((e,i)=>i===0?8+h('w0')%6:1+h('w'+i)%4);const W=w.reduce((a,b)=>a+b,0);const r={};em.forEach((e,i)=>r[e]=Math.floor(rt*w[i]/W));
+  return {views:Math.max(views,rt+1),r,order:em}}
+function applyPostStats(c,m){if(!m||m.sys)return false;if(c.owner&&!m.aud)m.aud=c.subs||0;const st=postStats(m.id,m.aud||c.subs,m.time);
+  const mine=Object.entries(m.reactions||{}).find(([e,v])=>v&&v.mine);const r={};st.order.forEach(e=>{if(st.r[e]>0||(mine&&mine[0]===e))r[e]={n:st.r[e],mine:false}});
+  if(mine){r[mine[0]]=r[mine[0]]||{n:0,mine:false};r[mine[0]].n+=1;r[mine[0]].mine=true}
+  const views=st.views+(mine?1:0);const same=m.views===views&&JSON.stringify(m.reactions)===JSON.stringify(r);if(same)return false;m.views=views;m.reactions=r;return true}
 function botTick(){
   if(NOBOTS)return;
   {const fl=Object.values(S.chats).filter(c=>c.feed&&c.messages.length);if(fl.length){const c=pick(fl);const pm=c.messages.slice(-8).filter(m=>m.poll);if(pm.length){const m=pick(pm);const o=m.poll.opts;const i=Math.random()<.6?o.reduce((b,x,k)=>x.v>o[b].v?k:b,0):Math.floor(Math.random()*o.length);o[i].v+=2+Math.floor(Math.random()*Math.max(9,c.subs/2500));save();if(T.openChat===c.id){const el=document.querySelector(`#msgs .poll[data-poll="${m.id}"]`);if(el&&m.poll.voted>=0)renderMessages()}}}}
@@ -4151,22 +4285,17 @@ function botTick(){
     if(m&&!m.sys){const e=Object.keys(m.reactions||{}).length&&Math.random()<.92?Object.keys(m.reactions)[Math.floor(Math.random()*Object.keys(m.reactions).length)]:E[Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=1+Math.floor(Math.random()*Math.max(4,c.subs/4000));m.views=(m.views||0)+3+Math.floor(Math.random()*Math.max(20,c.subs/500));touched=c}}}
   Object.values(S.chats).filter(c=>!c.remote&&(!REAL||c.type==='channel')).filter(c=>(c.discussion&&c.joined)||(c.type==='channel'&&c.owner)||c.type==='group').forEach(c=>{const ps=c.messages.filter(m=>m.poll&&m.from==='me'||m.poll&&c.owner&&m.from===c.id).slice(-3);if(ps.length&&Math.random()<(c.type==='channel'?Math.min(.9,.2+c.subs/400):.2)){const m=pick(ps);const cap=c.type==='channel'?Math.floor(c.subs*.6):c.members.length;const tot=m.poll.opts.reduce((a,o)=>a+o.v,0);if(tot<cap){m.poll.opts[Math.floor(Math.random()*m.poll.opts.length)].v+=c.type==='channel'?Math.min(cap-tot,1+Math.floor(Math.random()*Math.max(1,c.subs/120))):1;save();if(T.openChat===c.id&&m.poll.voted>=0)renderMessages()}}});
   Object.values(S.chats).filter(c=>c.type==='channel'&&c.owner).forEach(c=>{
-    // views: posts keep being seen by subscribers, and never trail behind votes and reactions
-    c.messages.filter(m=>!m.sys&&t-m.time<7*DAY).forEach(m=>{const fd=m._fd||(m._fd=fade(c));const target=Math.floor(Math.max(300+(m._vb||(m._vb=20+Math.floor(Math.random()*260))),Math.floor(c.subs*(m._vk||(m._vk=.55+Math.random()*.35))))*fd);const floor=minViews(m);
-      let v=m.views||1;if(v<target&&Math.random()<.8){v+=2+Math.floor(Math.random()*Math.max(2,(target-v)/5));touched=touched||c}
-      if(v<floor){v=floor+Math.floor(Math.random()*3);touched=touched||c}m.views=Math.min(Math.max(v,floor),Math.max(target,floor))});
+    c.messages.filter(m=>!m.sys&&t-m.time<30*DAY).forEach(m=>{if(applyPostStats(c,m))touched=touched||c});
     const age=(t-(c.created||c.messages[0]?.time||t))/HOUR;const posts=c.messages.filter(m=>!m.sys).length;
     let cap=Math.floor(3+posts*20+age*2);
     if(c.subs>=100)cap=Math.max(cap,Math.floor(c.subs*1.05+posts*20));
     if(c.subs>=10000&&!c.peakAt)c.peakAt=Date.now();
     if(c.peakAt)cap=Math.min(cap,c.subs+1);
     if(c.subs<cap&&Math.random()<(c.peakAt?.01:.12)){const add=c.subs>=100?Math.max(1,Math.ceil(c.subs*(.0005+Math.random()*.0015))):1;c.subs+=add;c.subGrow=(c.subGrow||0)+add;touched=touched||c;if(T.openChat===c.id)updateHeadStatus()}
-    const own=c.messages.filter(m=>!m.sys&&t-m.time<3*DAY).slice(-5);
-    own.forEach(m=>{if(Math.random()>.7)return;const tot=Object.values(m.reactions||{}).reduce((a,v)=>a+v.n,0);
-      const rcap=Math.floor(Math.max(50+(m._rb||(m._rb=5+Math.floor(Math.random()*60))),Math.floor(c.subs*.15))*(m._fd||fade(c)));
-      if(tot<rcap){const E=['❤️','👍','🔥','😍','🎉','😂'];const e=E[Math.random()<.55?0:Math.floor(Math.random()*E.length)];m.reactions=m.reactions||{};m.reactions[e]=m.reactions[e]||{n:0,mine:false};m.reactions[e].n+=Math.min(rcap-tot,3+Math.floor(Math.random()*Math.max(6,c.subs/200)));m.views=Math.max(m.views||1,minViews(m)+Math.floor(Math.random()*5));touched=touched||c}});
+
   });
-  Object.values(S.chats).filter(c=>c.type==='channel'&&!c.remote).forEach(c=>c.messages.slice(-30).forEach(m=>{if(m.sys)return;const f=minViews(m);if((m.views||0)<f){m.views=f+Math.floor(Math.random()*4);touched=touched||c}}));
+  Object.values(S.chats).filter(c=>c.type==='channel'&&c.pubRid&&!c.owner).forEach(c=>c.messages.filter(m=>!m.sys&&t-m.time<30*DAY).forEach(m=>{if(applyPostStats(c,m))touched=touched||c}));
+  Object.values(S.chats).filter(c=>c.type==='channel'&&!c.remote&&!c.owner&&!c.pubRid).forEach(c=>c.messages.slice(-30).forEach(m=>{if(m.sys)return;const f=minViews(m);if((m.views||0)<f){m.views=f+Math.floor(Math.random()*4);touched=touched||c}}));
   Object.values(S.chats).forEach(c=>{if(c.owner&&c.public)pubSyncMeta(c)});
   if(touched){save();if(T.openChat===touched.id)renderMessages()}
 }
@@ -4468,7 +4597,7 @@ function applyChatDoc(id,d){
   c.remote=true;c.rid=id;c.type=d.type==='group'?'group':'private';c.pending=c.pending||[];
   if(c.type==='private'){const other=(d.members||[]).find(x=>x!==RT.uid)||RT.uid;c.user=other;watchUser(other)}
   else{c.title=d.title||'Группа';c.color=d.color||'#65aadd';c.avatar=d.avatar||null;c.emoji=null;c.members=(d.members||[]).filter(x=>x!==RT.uid);c.admin=(d.admins||[]).includes(RT.uid);c.admins=d.admins||[];c.members.forEach(watchUser)}
-  c.reads=d.reads||{};c.lastTime=d.updatedAt||0;
+  c.reads=d.reads||{};c.lastTime=d.updatedAt||0;if(d.chanOf){const fresh=JSON.stringify(d.cc||null)!==JSON.stringify(c.cc||null);c.ccChan=d.chanOf;c.cc=d.cc||null;if(fresh){c._simSig='';sccInject(c);if(T.openChat===L){renderMessages();try{renderChatBottom()}catch(_){}}}}
   const tp=d.typing||{};let ty=null,act='type',best=0;Object.entries(tp).forEach(([k,t])=>{const [u,a]=k.split('|');if(u!==RT.uid&&Date.now()-t<6000&&t>best){best=t;ty=u;act=a||'type'}});T.typAct=T.typAct||{};T.typAct[L]=act;
   if(ty){T.typing[L]=ty;clearTimeout(c._tyT);c._tyT=setTimeout(()=>{if(T.typing[L]===ty){delete T.typing[L];updateTyping(c)}},6000)}else delete T.typing[L];
   if(T.openChat===L)updateHeadStatus();
@@ -4507,7 +4636,7 @@ function watchMessages(c,attempt){
     if(!first&&!c.muted&&list.some(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys)){playRing(c.id);try{const nm=list.filter(m=>!known.has(m.id)&&m.from!=='me'&&!m.sys).pop();if(ntf()[c.type==='private'?'dm':'gr']){localNotify(c,nm);inAppBanner(c,nm)}}catch(_){}}first=false;
     list.sort((a,b)=>a.time-b.time);
     {const th=list.filter(m=>m.themeSet!==undefined).pop();if(th){S.themeAll=S.themeAll||{};if(th.themeSet==='def')delete S.themeAll[c.id];else S.themeAll[c.id]=th.themeSet;if(T.openChat===c.id)applyTheme(c.id)}}
-    c.messages=list.concat(c.pending||[]);
+    c.messages=list.concat(c.pending||[]);if(c.ccChan){c._simSig='';sccInject(c)}
     recomputeStatus(c);save();
     if(T.openChat===c.id){renderMessages();markRemoteRead(c)}
     renderListIfVisible();
